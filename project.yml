@@ -12,7 +12,7 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleIdentifier: com.isolate.app
+        CFBundleIdentifier: com.isolate.Isolate
         CFBundleName: Isolate
         CFBundlePackageType: APPL
         CFBundleShortVersionString: "1.0"
