@@ -1,0 +1,39 @@
+name: Isolate
+options:
+  bundleIdPrefix: com.isolate
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  Isolate:
+    type: application
+    platform: macOS
+    sources: 
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleIdentifier: com.isolate.app
+        CFBundleName: Isolate
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        ATSApplicationFontsPath: "."
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        SWIFT_VERSION: 5.0
+  IsolateTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: Tests/IsolateTests
+    dependencies:
+      - target: Isolate
+  IsolateUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: UITests/IsolateUITests
+    dependencies:
+      - target: Isolate
