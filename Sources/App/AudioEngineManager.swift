@@ -640,13 +640,15 @@ actor DemucsEngine {
             outputURLs.append(stemURL)
         }
         
+        let hopSize = chunkSize / 2
+        var window = [Float](repeating: 0, count: chunkSize)
+        vDSP_hann_window(&window, vDSP_Length(chunkSize), Int32(vDSP_HANN_NORM))
+        
+        // 8 arrays: [VocalsL, VocalsR, DrumsL, DrumsR, BassL, BassR, OtherL, OtherR]
+        var accumulators = [[Float]](repeating: [Float](repeating: 0.0, count: totalFrames), count: 8)
+        
         let inputShape: [NSNumber] = [1, 2, NSNumber(value: chunkSize)]
         let inputArray = try MLMultiArray(shape: inputShape, dataType: .float32)
-        
-        // Pre-allocate chunk buffers for writing
-        let outChunkBuffers = (0..<4).map { _ in
-            AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(chunkSize))!
-        }
         
         var currentFrame = 0
         
@@ -665,7 +667,6 @@ actor DemucsEngine {
             }
             
             let inputProvider = try MLDictionaryFeatureProvider(dictionary: ["audio": MLFeatureValue(multiArray: inputArray)])
-            
             let prediction = try await Task.detached(priority: .userInitiated) {
                 try model.prediction(from: inputProvider)
             }.value
@@ -678,45 +679,49 @@ actor DemucsEngine {
             
             for stemIdx in 0..<4 {
                 let outStemOffset = stemIdx * stemStride
-                let chunkBuffer = outChunkBuffers[stemIdx]
-                chunkBuffer.frameLength = AVAudioFrameCount(readFrames)
-                
-                let destL = chunkBuffer.floatChannelData![0]
-                let destR = chunkBuffer.floatChannelData![1]
-                
                 if isFloat32 {
                     let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float.self)
                     let srcL = outPtr.advanced(by: outStemOffset)
                     let srcR = outPtr.advanced(by: outStemOffset + channelStride)
                     for i in 0..<readFrames {
-                        destL[i] = srcL[i]
-                        destR[i] = srcR[i]
+                        let w = window[i]
+                        accumulators[stemIdx * 2][currentFrame + i] += srcL[i] * w
+                        accumulators[stemIdx * 2 + 1][currentFrame + i] += srcR[i] * w
                     }
                 } else {
                     let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float16.self)
                     let srcL = outPtr.advanced(by: outStemOffset)
                     let srcR = outPtr.advanced(by: outStemOffset + channelStride)
                     for i in 0..<readFrames {
-                        destL[i] = Float(srcL[i])
-                        destR[i] = Float(srcR[i])
+                        let w = window[i]
+                        accumulators[stemIdx * 2][currentFrame + i] += Float(srcL[i]) * w
+                        accumulators[stemIdx * 2 + 1][currentFrame + i] += Float(srcR[i]) * w
                     }
                 }
-                
-                // Anti-click fade at chunk boundaries
-                let fadeLength = min(256, readFrames / 2)
-                for i in 0..<fadeLength {
-                    let multiplier = Float(i) / Float(fadeLength)
-                    destL[i] *= multiplier
-                    destR[i] *= multiplier
-                    destL[readFrames - 1 - i] *= multiplier
-                    destR[readFrames - 1 - i] *= multiplier
-                }
-                
-                try writers[stemIdx].write(from: chunkBuffer)
             }
             
-            currentFrame += chunkSize
+            currentFrame += hopSize
             progressCallback(min(1.0, Double(currentFrame) / Double(totalFrames)))
+        }
+        
+        // Write the fully assembled accumulators to WAV files
+        let outChunkBuffers = (0..<4).map { _ in
+            AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(totalFrames))!
+        }
+        
+        for stemIdx in 0..<4 {
+            let buffer = outChunkBuffers[stemIdx]
+            buffer.frameLength = AVAudioFrameCount(totalFrames)
+            let destL = buffer.floatChannelData![0]
+            let destR = buffer.floatChannelData![1]
+            
+            let srcL = accumulators[stemIdx * 2]
+            let srcR = accumulators[stemIdx * 2 + 1]
+            
+            destL.update(from: srcL, count: totalFrames)
+            destR.update(from: srcR, count: totalFrames)
+            
+            try writers[stemIdx].write(from: buffer)
         }
         
         return outputURLs
