@@ -14,7 +14,7 @@ struct IsolateApp: App {
                 .environment(engineManager)
                 .modelContainer(for: TrackModel.self)
                 .preferredColorScheme(.dark)
-                .frame(minWidth: 800, minHeight: 600)
+                .frame(minWidth: 950, minHeight: 600)
                 .overlay {
                     if engineManager.isSplitting {
                         ZStack {
@@ -85,7 +85,7 @@ struct IsolateApp: App {
                     return false
                 }
         }
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
     }
     
     private func handleDroppedFile(url: URL) {

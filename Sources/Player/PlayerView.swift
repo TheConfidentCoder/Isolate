@@ -56,6 +56,7 @@ struct PlayerView: View {
             
             TransportBar()
         }
+        .frame(minWidth: 700, minHeight: 500)
         .background(GridBackground())
     }
 }
@@ -200,6 +201,8 @@ struct TransportBar: View {
             Text(engineManager.currentTimeString)
                 .font(.custom("DotGothic16-Regular", size: 18))
                 .foregroundColor(.red)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -266,6 +269,9 @@ struct TransportBar: View {
             .background(engineManager.isBypassed ? Color.red : Color.clear)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.red, lineWidth: 1))
             .foregroundColor(engineManager.isBypassed ? .black : .red)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .buttonStyle(.plain)
             
             Button(engineManager.isExporting ? String(format: "EXPORTING... %.0f%%", engineManager.exportProgress * 100) : "EXPORT STEMS") {
                 Haptics.playClick()
@@ -278,6 +284,9 @@ struct TransportBar: View {
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.red, lineWidth: 1))
             .foregroundColor(engineManager.isExporting ? .gray : .red)
             .disabled(engineManager.isExporting)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 30)
         .padding(.vertical, 15)
