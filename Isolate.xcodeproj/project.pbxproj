@@ -10,11 +10,13 @@
 		161EC9862A7208CA69D028EC /* IsolateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1A0F01EE97D0951555E052 /* IsolateApp.swift */; };
 		2F2A0BC6505F33710694C940 /* CustomFader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72591EB18E208F038A7760C /* CustomFader.swift */; };
 		49F7C5966BB4966F7B02CE38 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B32BB7E1AA2EC3946E2671E /* LibraryView.swift */; };
+		64DAA5BF14FB75131FF30C78 /* TrackModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E404CB7871E1A45DE1242859 /* TrackModel.swift */; };
 		6CBEC0DDE108EA06515F8B93 /* AudioEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F162949F185EF2FA9835DE2C /* AudioEngineManager.swift */; };
 		8795659D14EB49E0487CF201 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59B0F1BF366285DF7ED96856 /* PlayerView.swift */; };
 		95C2E3DA7EFB59D971F2F6E1 /* DotGothic16-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65D4E52007621CC6578509E0 /* DotGothic16-Regular.ttf */; };
 		A424654DA3598C87FECBA99E /* IsolateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51723840AA00CB3D59039A2 /* IsolateUITests.swift */; };
 		CCA10CCFD58840F597E21121 /* IsolateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B54412E9E3F71B00BF34FB0 /* IsolateTests.swift */; };
+		F0F7BC284EA97E34B007342C /* FFTAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */; };
 		F26A92AD18BE6E579AC5EC40 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C71DE2440945DF04ED48AA /* Haptics.swift */; };
 /* End PBXBuildFile section */
 
@@ -37,6 +39,7 @@
 
 /* Begin PBXFileReference section */
 		3B32BB7E1AA2EC3946E2671E /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFTAnalyzer.swift; sourceTree = "<group>"; };
 		59B0F1BF366285DF7ED96856 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		65D4E52007621CC6578509E0 /* DotGothic16-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DotGothic16-Regular.ttf"; sourceTree = "<group>"; };
 		8CEABFC996FE6B255FC50AD8 /* IsolateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IsolateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -45,6 +48,7 @@
 		AC1A0F01EE97D0951555E052 /* IsolateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsolateApp.swift; sourceTree = "<group>"; };
 		D7C71DE2440945DF04ED48AA /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		D9F18A0F03B33726F0C3D41F /* Isolate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Isolate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E404CB7871E1A45DE1242859 /* TrackModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackModel.swift; sourceTree = "<group>"; };
 		E51723840AA00CB3D59039A2 /* IsolateUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsolateUITests.swift; sourceTree = "<group>"; };
 		EB48C41F9AED4EED81D5AECF /* IsolateUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IsolateUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F162949F185EF2FA9835DE2C /* AudioEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngineManager.swift; sourceTree = "<group>"; };
@@ -73,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				F162949F185EF2FA9835DE2C /* AudioEngineManager.swift */,
+				49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */,
 				D7C71DE2440945DF04ED48AA /* Haptics.swift */,
 				AC1A0F01EE97D0951555E052 /* IsolateApp.swift */,
 			);
@@ -104,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				3B32BB7E1AA2EC3946E2671E /* LibraryView.swift */,
+				E404CB7871E1A45DE1242859 /* TrackModel.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -245,10 +251,12 @@
 			files = (
 				6CBEC0DDE108EA06515F8B93 /* AudioEngineManager.swift in Sources */,
 				2F2A0BC6505F33710694C940 /* CustomFader.swift in Sources */,
+				F0F7BC284EA97E34B007342C /* FFTAnalyzer.swift in Sources */,
 				F26A92AD18BE6E579AC5EC40 /* Haptics.swift in Sources */,
 				161EC9862A7208CA69D028EC /* IsolateApp.swift in Sources */,
 				49F7C5966BB4966F7B02CE38 /* LibraryView.swift in Sources */,
 				8795659D14EB49E0487CF201 /* PlayerView.swift in Sources */,
+				64DAA5BF14FB75131FF30C78 /* TrackModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,6 +295,7 @@
 		0A3B2C8C5957918CBDADF59D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_INTENTS_METADATA_EXTRACTION_ENABLED = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_PREVIEWS = YES;
@@ -408,6 +417,7 @@
 		D4B1086010A53A1996F7213C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_INTENTS_METADATA_EXTRACTION_ENABLED = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_PREVIEWS = YES;

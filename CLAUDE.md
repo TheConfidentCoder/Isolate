@@ -30,16 +30,28 @@ This document serves as the central source of truth for the **Isolate** app. It 
 * **Library Organization**: Tracks should be grouped by their original folder structure.
 
 ## 3. Architecture & Audio Engine
-* **Frameworks**: SwiftUI, SwiftData, CoreML, AVFoundation (`AVAudioEngine`).
-* **Stem Splitting Flow (CoreML)**:
-    1. Read input audio via `AVAssetReader`.
-    2. Chunk audio and run inference using the CoreML Demucs model on the Apple Neural Engine.
-    3. Reconstruct the output and write 4 separate `.wav` or `.caf` stem files to a cache directory.
+* **Frameworks**: SwiftUI, SwiftData, CoreML, AVFoundation (`AVAudioEngine`), Accelerate (`vDSP`).
+* **Stem Splitting Flow (CoreML & Apple Silicon)**:
+    1. Read input audio via `AVAssetReader` and convert to `Float32` chunks.
+    2. Process audio using `vDSP` to conform to the 44.1kHz stereo format required by the model.
+    3. Run inference sequentially through `HTDemucs_CoreML_FP16.mlpackage` utilizing the Apple Neural Engine (`ANE`) and GPU (`MLComputeDevice`).
+    4. Reconstruct the output using Accelerate vector math and write 4 separate `.caf` stem files to the local App Sandbox cache.
+    5. Maintain extreme memory efficiency (~1GB limit) by streaming inference chunks rather than holding the entire uncompressed track in RAM.
 * **Playback Graph**:
-    * 4 `AVAudioPlayerNode` instances (one for each stem), scheduled to play synchronously.
+    * 5 `AVAudioPlayerNode` instances (4 for stems, 1 for Bypass/Original).
+    * `AVAudioTap` placed on the mixer nodes, backed by `Accelerate` to compute live RMS acoustic energy for the Dynamic UI.
     * 4 `AVAudioMixerNode` instances (handling volume/mute/solo for each stem).
     * Routes into a Main Mixer Node.
     * `AVAudioUnitTimePitch` applied globally to adjust playback speed and pitch in real-time.
+
+### Phase 2: Core Enhancements & Optimization
+1. **CPU/Memory Optimization (Priority)**: Clean up CoreML memory usage, profile CPU bottlenecks.
+2. **Persistence / Caching**: SwiftData to remember imported tracks. Cache AI output stems to disk so subsequent loads are instant.
+3. **Export Stems**: 'Save As' dialog to export the 4 individual separated stems bundled into a single ZIP archive, named `[TrackName]_[StemType].caf`.
+4. **Master Bypass**: A toggle to instantly compare the AI-separated stems against the original audio.
+5. **Keyboard Shortcuts**: Pro-level shortcuts (Spacebar for Play/Pause, hotkeys for Mute/Solo).
+6. **Visual EQ Curve**: Add an EQ spectrum visualizer alongside the existing Nothing-style waveform for each stem.
+
 * **Export Pipeline**:
     * Switch `AVAudioEngine` to `enableManualRenderingMode` to rapidly process and bounce the current audio graph state (including effect nodes and mixer levels) directly to an audio file on disk.
 
