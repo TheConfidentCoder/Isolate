@@ -26,15 +26,22 @@ targets:
         ENABLE_PREVIEWS: YES
         SWIFT_VERSION: 5.0
         APP_INTENTS_METADATA_EXTRACTION_ENABLED: NO
+        GENERATE_INFOPLIST_FILE: YES
   IsolateTests:
     type: bundle.unit-test
     platform: macOS
     sources: Tests/IsolateTests
     dependencies:
       - target: Isolate
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
   IsolateUITests:
     type: bundle.ui-testing
     platform: macOS
     sources: UITests/IsolateUITests
     dependencies:
       - target: Isolate
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

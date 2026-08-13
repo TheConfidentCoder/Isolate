@@ -1,31 +1,49 @@
-# Isolate - Audio Engine & CoreML Details
+# Isolate - Audio Engine & CoreML Pipeline
 
-## 1. Stem Separation (CoreML)
-Isolate uses the Demucs model to separate audio into 4 stems. Because running this in Python via PyTorch is not viable for a native, fast Mac app, we will use a CoreML-converted version of the model.
+## 1. High-Fidelity Stem Separation Pipeline (`DemucsEngine`)
+Isolate uses the Hybrid Transformer Demucs (HTDemucs) model compiled to Apple Silicon CoreML (`MLProgram`), running natively on the Apple Neural Engine (`ANE`) and GPU with zero Python dependencies.
 
-### Process Flow:
-1. **Decode**: `AVAssetReader` extracts raw PCM float32 audio data from the input file (MP3, FLAC, etc.).
-2. **Chunking**: The model accepts specific window sizes. The audio must be chunked and passed to the Neural Engine.
-3. **Inference**: `MLModel` processes the chunk. Apple Silicon's Neural Engine handles the heavy matrix multiplications.
-4. **Reconstruction**: The output tensors are stitched back together.
-5. **Encode**: The resulting 4 arrays (Vocals, Bass, Drums, Other) are written to a temporary cache directory as `.wav` or `.caf` files for fast loading.
+### Mathematical & DSP Architecture:
+1. **Mastering Resampler (`AVAudioConverter`)**:
+   - Decodes any format (`MP3`, `FLAC`, `ALAC`, `WAV`, `M4A`, `AAC`, `OGG`) at any sample rate (`44.1k`, `48k`, `96k`, `192k`).
+   - Resamples using `AVSampleRateConverterAlgorithm_Mastering` with `AVAudioQuality.max` to 44.1kHz 32-bit Float Stereo with zero aliasing.
+2. **Audio Energy & Dynamic Range Standardization**:
+   - Calculates track-wide mean $\mu$ and standard deviation $\sigma$ using Accelerate `vDSP`.
+   - Normalizes audio prior to inference: $x_{\text{norm}} = (x - \mu) / \sigma$.
+   - Restores exact natural dynamics upon reconstruction: $s_{\text{actual}} = s_{\text{model}} \cdot \sigma + \mu$.
+3. **Mirror / Reflection Padding**:
+   - Center-aligns the start ($t=0$) and end ($t=L$) by reflection-padding by $hopSize = 220500$ samples (5.0 seconds).
+   - Eliminates all onset/fade transients, boundary clicks, and edge attenuation.
+4. **Normalized Overlap-Add (COLA) with Weight Accumulation**:
+   - 10.0s Chunk duration ($N = 441000$) with 50% overlap ($H = 220500$).
+   - Periodic Hann window $w[n] = 0.5 \cdot (1 - \cos(2\pi n / N))$ via `vDSP_hann_window`.
+   - Accumulates stem energy: $A[s, t + n] += s_k[s, n] \cdot w[n]$.
+   - Accumulates window weights: $W[t + n] += w[n]$.
+   - Final normalization: $s[s, t] = A[s, t] / \max(10^{-5}, W[t])$.
+   - Flat frequency response ($W[t] \equiv 1.0$) across the entire song.
+5. **Lossless Stem Export**:
+   - Outputs 4 separate 32-bit Float PCM Stereo WAV files:
+     - `vocals.wav` (Stem Index 0)
+     - `drums.wav` (Stem Index 1)
+     - `bass.wav` (Stem Index 2)
+     - `other.wav` (Stem Index 3)
 
-## 2. Playback Architecture (AVAudioEngine)
-Once the stems are available on disk, we construct a real-time playback graph.
+---
 
-### The Audio Graph
+## 2. Playback Architecture (`AudioEngineManager`)
 ```
-[Player Node 1 (Vocals)] ---> [Mixer 1] --\
-[Player Node 2 (Bass)]   ---> [Mixer 2] ---> [Main Stem Mixer] ---> [Time/Pitch Effect] ---> [Main Mixer / Output Node]
-[Player Node 3 (Drums)]  ---> [Mixer 3] --/
-[Player Node 4 (Other)]  ---> [Mixer 4] -/
+[Vocals Player] ---> [Vocals Mixer] ---\
+[Drums Player]  ---> [Drums Mixer]   ---\
+                                          ---> [Stems Sum Mixer] ---> [Main Engine Mixer]
+[Bass Player]   ---> [Bass Mixer]    ---/
+[Other Player]  ---> [Other Mixer]   ---/
+[Original Master Player] --------------------------------------------/ (Bypass Toggle)
 ```
 
-### Key Components
-- **AVAudioPlayerNode**: We use 4 of these, one for each stem. They must be scheduled to play simultaneously using a shared `AVAudioTime` to guarantee sample-accurate sync.
-- **AVAudioMixerNode**: Each player node routes to its own mixer. The UI volume sliders directly manipulate the `volume` property of these 4 mixers.
-- **AVAudioUnitTimePitch**: Inserted between the main stem mixer and the output node. This allows real-time manipulation of the `rate` (speed) and `pitch` of the entire track.
-
-## 3. Export Pipeline
-To export, we switch `AVAudioEngine` to **manual rendering mode** (`enableManualRenderingMode`). 
-Instead of outputting to the speakers, the engine processes the audio as fast as possible (faster than real-time) and writes the output of the Main Mixer to an `AVAudioFile` on the user's disk. This captures the exact volume and effect states the user has set.
+### Key Capabilities:
+- **Sample-Accurate Multi-Node Synchronization**: Stems and Original Master are scheduled simultaneously on a shared `mach_absolute_time()` host time boundary.
+- **Master Bypass (Instant A/B Comparison)**: Seamless zero-latency toggling between unseparated master audio and the 4 isolated stems.
+- **Live Visualizers**:
+  - Live Master & Stem RMS Waveform analysis via `vDSP_rmsqv`.
+  - 32-Band FFT Master Spectrum and per-stem 16-Band mini EQ spectrum visualizers running at 30 fps via `vDSP_fft_zrip`.
+- **Persistent Caching**: Cached stems stored in `~/Library/Application Support/Isolate/Stems/` and indexed in `SwiftData`. Previously isolated tracks load instantaneously in 0.0s.

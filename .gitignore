@@ -30,3 +30,8 @@ Manifest.lock
 
 # Other
 xcuserdata/
+
+# CoreML Model Binaries (>100MB)
+*.mlmodelc
+*.mlpackage
+*.mlmodel

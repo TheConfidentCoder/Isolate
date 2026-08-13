@@ -4,80 +4,238 @@ import SwiftUI
 import SwiftData
 import Accelerate
 import AppKit
+import UniformTypeIdentifiers
 
-struct TrackData: Sendable {
-    let id: String
-    let title: String
-    let originalURL: URL
-    let vocalStemURL: URL
-    let bassStemURL: URL
-    let drumStemURL: URL
-    let otherStemURL: URL
+public struct TrackData: Sendable {
+    public let id: String
+    public let title: String
+    public let originalURL: URL
+    public let vocalStemURL: URL
+    public let bassStemURL: URL
+    public let drumStemURL: URL
+    public let otherStemURL: URL
+}
+
+public enum ExportState: Equatable, Sendable {
+    case idle
+    case exporting(stage: String, percent: Double)
+    case completed
 }
 
 @Observable
-final class AudioEngineManager: @unchecked Sendable {
+public final class AudioEngineManager: @unchecked Sendable {
+    // MARK: - Audio Engine Nodes
     private let engine = AVAudioEngine()
+    
     private let vocalPlayer = AVAudioPlayerNode()
-    private let bassPlayer = AVAudioPlayerNode()
     private let drumPlayer = AVAudioPlayerNode()
+    private let bassPlayer = AVAudioPlayerNode()
     private let otherPlayer = AVAudioPlayerNode()
     private let originalPlayer = AVAudioPlayerNode()
     
     private let vocalMixer = AVAudioMixerNode()
-    private let bassMixer = AVAudioMixerNode()
     private let drumMixer = AVAudioMixerNode()
+    private let bassMixer = AVAudioMixerNode()
     private let otherMixer = AVAudioMixerNode()
+    private let stemsSumMixer = AVAudioMixerNode()
     
-    var isPlaying = false
-    var currentTrackName: String = "NO TRACK LOADED"
-    var albumArt: NSImage?
-    var playbackProgress: Double = 0.0
-    var seekFrameOffset: AVAudioFramePosition = 0
-    var currentTimeString: String = "00:00 / -00:00"
-    var isBypassed: Bool = false { didSet { applyVolumes() } }
+    // MARK: - Playback State
+    public var isPlaying = false
+    public var currentTrackName: String = "NO TRACK LOADED"
+    public var albumArt: NSImage?
+    public var playbackProgress: Double = 0.0
+    public var seekFrameOffset: AVAudioFramePosition = 0
+    public var currentTimeString: String = "00:00 / -00:00"
+    public var isBypassed: Bool = false { didSet { applyVolumes() } }
     
     private var playbackSessionID = UUID()
     
-    // Performance throttling
-    private var lastEQUIUpdateTime: TimeInterval = 0
+    // MARK: - Stem Volumes, Mute, Solo (Default 1.0 = Unity Gain / 0 dB)
+    public var vocalVolume: Double = 1.0 { didSet { applyVolumes() } }
+    public var drumVolume: Double = 1.0 { didSet { applyVolumes() } }
+    public var bassVolume: Double = 1.0 { didSet { applyVolumes() } }
+    public var otherVolume: Double = 1.0 { didSet { applyVolumes() } }
+    
+    public var vocalMuted = false { didSet { applyVolumes() } }
+    public var drumMuted = false { didSet { applyVolumes() } }
+    public var bassMuted = false { didSet { applyVolumes() } }
+    public var otherMuted = false { didSet { applyVolumes() } }
+    
+    public var vocalSolo = false { didSet { applyVolumes() } }
+    public var drumSolo = false { didSet { applyVolumes() } }
+    public var bassSolo = false { didSet { applyVolumes() } }
+    public var otherSolo = false { didSet { applyVolumes() } }
+    
+    // MARK: - Live Visualizers (Waveform & Per-Stem EQ)
+    public var masterWaveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
+    public var originalWaveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
+    
+    public var masterEQMagnitudes: [Float] = Array(repeating: 0, count: 32)
+    public var vocalEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
+    public var drumEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
+    public var bassEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
+    public var otherEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
+    
+    private let fftAnalyzer = FFTAnalyzer(fftSize: 1024)
+    
+    // Throttling timers for smooth 30fps visualizer animations
     private var lastMasterUIUpdateTime: TimeInterval = 0
-    private var lastVocalUIUpdateTime: TimeInterval = 0
+    private var lastStemUIUpdateTime: TimeInterval = 0
     
-    var isExporting: Bool = false
-    var exportProgress: Double = 0.0
+    // MARK: - Splitting & Progress State
+    public var isSplitting = false
+    public var isCompilingModel = false
+    public var splitProgress = 0.0
+    public var currentChunkNumber = 0
+    public var totalChunkCount = 0
+    public var etaRemainingString = "--:--"
+    public var splitStatusMessage = "ANALYZING STEMS..."
     
-    var eqMagnitudes: [Float] = Array(repeating: 0, count: 32)
-    private let fftAnalyzer = FFTAnalyzer()
+    // MARK: - Export State
+    public var exportState: ExportState = .idle
+    public var isExporting: Bool { exportState != .idle }
+    public var exportProgress: Double = 0.0
     
-    var vocalVolume: Double = 0.8 { didSet { applyVolumes() } }
-    var bassVolume: Double = 0.8 { didSet { applyVolumes() } }
-    var drumVolume: Double = 0.8 { didSet { applyVolumes() } }
-    var otherVolume: Double = 0.8 { didSet { applyVolumes() } }
+    // MARK: - Audio File Handles
+    private var audioFile: AVAudioFile?
+    private var fileVocals: AVAudioFile?
+    private var fileDrums: AVAudioFile?
+    private var fileBass: AVAudioFile?
+    private var fileOther: AVAudioFile?
+    private var timer: Timer?
     
-    var vocalMuted = false { didSet { applyVolumes() } }
-    var bassMuted = false { didSet { applyVolumes() } }
-    var drumMuted = false { didSet { applyVolumes() } }
-    var otherMuted = false { didSet { applyVolumes() } }
+    // MARK: - Initialization
+    public init() {
+        setupAudioGraph()
+    }
     
-    var vocalSolo = false { didSet { applyVolumes() } }
-    var bassSolo = false { didSet { applyVolumes() } }
-    var drumSolo = false { didSet { applyVolumes() } }
-    var otherSolo = false { didSet { applyVolumes() } }
+    private func setupAudioGraph() {
+        engine.attach(vocalPlayer)
+        engine.attach(drumPlayer)
+        engine.attach(bassPlayer)
+        engine.attach(otherPlayer)
+        engine.attach(originalPlayer)
+        
+        engine.attach(vocalMixer)
+        engine.attach(drumMixer)
+        engine.attach(bassMixer)
+        engine.attach(otherMixer)
+        engine.attach(stemsSumMixer)
+        
+        // Connect players to channel mixers
+        engine.connect(vocalPlayer, to: vocalMixer, format: nil)
+        engine.connect(drumPlayer, to: drumMixer, format: nil)
+        engine.connect(bassPlayer, to: bassMixer, format: nil)
+        engine.connect(otherPlayer, to: otherMixer, format: nil)
+        
+        // Connect channel mixers into the stems sum mixer
+        engine.connect(vocalMixer, to: stemsSumMixer, format: nil)
+        engine.connect(drumMixer, to: stemsSumMixer, format: nil)
+        engine.connect(bassMixer, to: stemsSumMixer, format: nil)
+        engine.connect(otherMixer, to: stemsSumMixer, format: nil)
+        
+        // Connect stemsSumMixer and originalPlayer directly to the main mixer
+        engine.connect(stemsSumMixer, to: engine.mainMixerNode, format: nil)
+        engine.connect(originalPlayer, to: engine.mainMixerNode, format: nil)
+        
+        let format = engine.mainMixerNode.outputFormat(forBus: 0)
+        
+        // Master Output Tap: Waveform and Master 32-Band FFT
+        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+            guard let self = self, self.isPlaying else { return }
+            guard let channelData = buffer.floatChannelData?[0] else { return }
+            
+            let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
+            var bands = [Float](repeating: 0, count: 32)
+            let binsPerBand = max(1, magnitudes.count / 32)
+            for i in 0..<32 {
+                var sum: Float = 0
+                for j in 0..<binsPerBand {
+                    let idx = i * binsPerBand + j
+                    if idx < magnitudes.count { sum += magnitudes[idx] }
+                }
+                bands[i] = sum / Float(binsPerBand)
+            }
+            
+            let now = CACurrentMediaTime()
+            if now - self.lastMasterUIUpdateTime > 0.033 {
+                self.lastMasterUIUpdateTime = now
+                DispatchQueue.main.async {
+                    self.masterEQMagnitudes = bands
+                }
+            }
+            
+            self.processWaveform(buffer: buffer, isMaster: true)
+        }
+        
+        // Stems Tap for Ghost Waveform & Individual EQs
+        vocalPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+            guard let self = self, self.isPlaying else { return }
+            self.processWaveform(buffer: buffer, isMaster: false)
+            self.computeStemFFT(buffer: buffer, stem: 0)
+        }
+        drumPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+            guard let self = self, self.isPlaying else { return }
+            self.computeStemFFT(buffer: buffer, stem: 1)
+        }
+        bassPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+            guard let self = self, self.isPlaying else { return }
+            self.computeStemFFT(buffer: buffer, stem: 2)
+        }
+        otherPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
+            guard let self = self, self.isPlaying else { return }
+            self.computeStemFFT(buffer: buffer, stem: 3)
+        }
+        
+        applyVolumes()
+        
+        do {
+            try engine.start()
+        } catch {
+            print("Failed to start audio engine: \(error)")
+        }
+    }
+    
+    private func computeStemFFT(buffer: AVAudioPCMBuffer, stem: Int) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
+        var bands = [Float](repeating: 0, count: 16)
+        let binsPerBand = max(1, magnitudes.count / 16)
+        for i in 0..<16 {
+            var sum: Float = 0
+            for j in 0..<binsPerBand {
+                let idx = i * binsPerBand + j
+                if idx < magnitudes.count { sum += magnitudes[idx] }
+            }
+            bands[i] = sum / Float(binsPerBand)
+        }
+        
+        let now = CACurrentMediaTime()
+        if now - self.lastStemUIUpdateTime > 0.033 {
+            self.lastStemUIUpdateTime = now
+            DispatchQueue.main.async {
+                switch stem {
+                case 0: self.vocalEQMagnitudes = bands
+                case 1: self.drumEQMagnitudes = bands
+                case 2: self.bassEQMagnitudes = bands
+                case 3: self.otherEQMagnitudes = bands
+                default: break
+                }
+            }
+        }
+    }
     
     private func applyVolumes() {
         if isBypassed {
-            vocalMixer.outputVolume = 0
-            bassMixer.outputVolume = 0
-            drumMixer.outputVolume = 0
-            otherMixer.outputVolume = 0
+            stemsSumMixer.outputVolume = 0.0
             originalPlayer.volume = 1.0
             return
         }
         
         originalPlayer.volume = 0.0
+        stemsSumMixer.outputVolume = 1.0
         
-        let anySolo = vocalSolo || bassSolo || drumSolo || otherSolo
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
         
         let applyChannel = { (vol: Double, muted: Bool, soloed: Bool, mixer: AVAudioMixerNode) in
             if anySolo {
@@ -88,99 +246,9 @@ final class AudioEngineManager: @unchecked Sendable {
         }
         
         applyChannel(vocalVolume, vocalMuted, vocalSolo, vocalMixer)
-        applyChannel(bassVolume, bassMuted, bassSolo, bassMixer)
         applyChannel(drumVolume, drumMuted, drumSolo, drumMixer)
+        applyChannel(bassVolume, bassMuted, bassSolo, bassMixer)
         applyChannel(otherVolume, otherMuted, otherSolo, otherMixer)
-    }
-    
-    var waveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
-    var originalWaveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
-    var isBypassEnabled = false
-    
-    private var audioFile: AVAudioFile?
-    private var fileVocals: AVAudioFile?
-    private var fileBass: AVAudioFile?
-    private var fileDrums: AVAudioFile?
-    private var fileOther: AVAudioFile?
-    private var timer: Timer?
-    var isSplitting = false
-    var isCompilingModel = false
-    var splitProgress = 0.0
-    
-    init() {
-        setupEngine()
-    }
-    
-    private func setupEngine() {
-        engine.attach(vocalPlayer)
-        engine.attach(bassPlayer)
-        engine.attach(drumPlayer)
-        engine.attach(otherPlayer)
-        engine.attach(originalPlayer)
-        
-        engine.attach(vocalMixer)
-        engine.attach(bassMixer)
-        engine.attach(drumMixer)
-        engine.attach(otherMixer)
-        
-        let mixer = engine.mainMixerNode
-        engine.connect(vocalPlayer, to: vocalMixer, format: nil)
-        engine.connect(bassPlayer, to: bassMixer, format: nil)
-        engine.connect(drumPlayer, to: drumMixer, format: nil)
-        engine.connect(otherPlayer, to: otherMixer, format: nil)
-        engine.connect(originalPlayer, to: mixer, format: nil)
-        
-        engine.connect(vocalMixer, to: engine.mainMixerNode, format: nil)
-        engine.connect(bassMixer, to: engine.mainMixerNode, format: nil)
-        engine.connect(drumMixer, to: engine.mainMixerNode, format: nil)
-        engine.connect(otherMixer, to: engine.mainMixerNode, format: nil)
-        
-        let format = engine.mainMixerNode.outputFormat(forBus: 0)
-        
-        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
-            guard let self = self else { return }
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            
-            // FFT calculation for EQ
-            let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
-            var bands = [Float](repeating: 0, count: 32)
-            let binsPerBand = magnitudes.count / 32
-            for i in 0..<32 {
-                var sum: Float = 0
-                for j in 0..<binsPerBand {
-                    let idx = i * binsPerBand + j
-                    if idx < magnitudes.count {
-                        sum += magnitudes[idx]
-                    }
-                }
-                bands[i] = sum / Float(binsPerBand)
-            }
-            
-            let now = CACurrentMediaTime()
-            if now - self.lastEQUIUpdateTime > 0.05 {
-                self.lastEQUIUpdateTime = now
-                DispatchQueue.main.async {
-                    self.eqMagnitudes = bands
-                }
-            }
-            
-            // Waveform processing
-            if self.isPlaying {
-                self.processWaveform(buffer: buffer, isMaster: true)
-            }
-        }
-        
-        vocalPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
-            guard let self = self, self.isPlaying else { return }
-            self.processWaveform(buffer: buffer, isMaster: false)
-        }
-        
-        applyVolumes()
-        do {
-            try engine.start()
-        } catch {
-            print("Failed to start audio engine: \(error)")
-        }
     }
     
     private func processWaveform(buffer: AVAudioPCMBuffer, isMaster: Bool) {
@@ -196,26 +264,22 @@ final class AudioEngineManager: @unchecked Sendable {
                 let start = i * blockSize
                 var rms: Float = 0.0
                 vDSP_rmsqv(channelData.advanced(by: start), 1, &rms, vDSP_Length(blockSize))
-                
-                if rms.isNaN || rms.isInfinite {
-                    rms = 0.0
-                }
-                
+                if rms.isNaN || rms.isInfinite { rms = 0.0 }
                 newAmplitudes[i] = rms * 5.0
             }
         }
         
         let now = CACurrentMediaTime()
         if isMaster {
-            if now - self.lastMasterUIUpdateTime > 0.05 {
+            if now - self.lastMasterUIUpdateTime > 0.033 {
                 self.lastMasterUIUpdateTime = now
                 DispatchQueue.main.async {
-                    self.waveformAmplitudes = newAmplitudes.map { min(max($0, 0.05), 1.0) }
+                    self.masterWaveformAmplitudes = newAmplitudes.map { min(max($0, 0.05), 1.0) }
                 }
             }
         } else {
-            if now - self.lastVocalUIUpdateTime > 0.05 {
-                self.lastVocalUIUpdateTime = now
+            if now - self.lastStemUIUpdateTime > 0.033 {
+                self.lastStemUIUpdateTime = now
                 DispatchQueue.main.async {
                     self.originalWaveformAmplitudes = newAmplitudes.map { min(max($0, 0.05), 1.0) }
                 }
@@ -223,58 +287,73 @@ final class AudioEngineManager: @unchecked Sendable {
         }
     }
     
-    private func clearWaveform() {
+    private func clearVisualizers() {
         DispatchQueue.main.async {
-            self.waveformAmplitudes = Array(repeating: 0.05, count: 30)
+            self.masterWaveformAmplitudes = Array(repeating: 0.05, count: 30)
             self.originalWaveformAmplitudes = Array(repeating: 0.05, count: 30)
+            self.masterEQMagnitudes = Array(repeating: 0, count: 32)
+            self.vocalEQMagnitudes = Array(repeating: 0, count: 16)
+            self.drumEQMagnitudes = Array(repeating: 0, count: 16)
+            self.bassEQMagnitudes = Array(repeating: 0, count: 16)
+            self.otherEQMagnitudes = Array(repeating: 0, count: 16)
         }
     }
     
+    // MARK: - Loading & Splitting Audio
+    
     @MainActor
-    func loadTrack(_ track: TrackModel) async {
+    public func loadTrack(_ track: TrackModel) async {
         currentTrackName = track.title.uppercased()
         if isPlaying { togglePlayback() }
         
         extractMetadata(url: track.originalURL)
         
         do {
+            let fVocals = try AVAudioFile(forReading: track.vocalStemURL)
             let fDrums = try AVAudioFile(forReading: track.drumStemURL)
             let fBass = try AVAudioFile(forReading: track.bassStemURL)
             let fOther = try AVAudioFile(forReading: track.otherStemURL)
-            let fVocals = try AVAudioFile(forReading: track.vocalStemURL)
             
+            self.fileVocals = fVocals
             self.fileDrums = fDrums
             self.fileBass = fBass
             self.fileOther = fOther
-            self.fileVocals = fVocals
             self.audioFile = try? AVAudioFile(forReading: track.originalURL)
             
             scheduleAllPlayers(at: nil)
-            
             playSynced()
         } catch {
             print("Failed to load cached stems: \(error)")
         }
     }
     
-    func loadAndSplitAudio(url: URL) async -> TrackData? {
+    public func loadAndSplitAudio(url: URL) async -> TrackData? {
         await MainActor.run {
-            currentTrackName = url.lastPathComponent.uppercased()
-            isSplitting = true
-            isCompilingModel = true
-            splitProgress = 0.0
-            if isPlaying { togglePlayback() }
+            self.currentTrackName = url.lastPathComponent.uppercased()
+            self.isSplitting = true
+            self.isCompilingModel = false
+            self.splitProgress = 0.0
+            self.currentChunkNumber = 0
+            self.totalChunkCount = 0
+            self.etaRemainingString = "--:--"
+            self.splitStatusMessage = "INITIALIZING APPLE NEURAL ENGINE..."
+            if self.isPlaying { self.togglePlayback() }
         }
         
         extractMetadata(url: url)
         
         do {
-            let stemURLs = try await DemucsEngine.shared.splitAudio(url: url) { progress in
-                Task { @MainActor in 
-                    if self.isCompilingModel && progress > 0 {
-                        self.isCompilingModel = false
-                    }
-                    self.splitProgress = progress 
+            let stemURLs = try await DemucsEngine.shared.splitAudio(url: url) { [weak self] progressInfo in
+                Task { @MainActor in
+                    guard let self = self else { return }
+                    self.splitProgress = progressInfo.fraction
+                    self.currentChunkNumber = progressInfo.currentChunk
+                    self.totalChunkCount = progressInfo.totalChunks
+                    self.splitStatusMessage = progressInfo.statusMessage
+                    
+                    let etaMins = Int(progressInfo.estimatedRemainingSeconds) / 60
+                    let etaSecs = Int(progressInfo.estimatedRemainingSeconds) % 60
+                    self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
                 }
             }
             
@@ -283,17 +362,18 @@ final class AudioEngineManager: @unchecked Sendable {
             let fBass = try AVAudioFile(forReading: stemURLs[2])
             let fOther = try AVAudioFile(forReading: stemURLs[3])
             
+            self.fileVocals = fVocals
             self.fileDrums = fDrums
             self.fileBass = fBass
             self.fileOther = fOther
-            self.fileVocals = fVocals
             self.audioFile = try? AVAudioFile(forReading: url)
             
             scheduleAllPlayers(at: nil)
             
+            let cleanTitle = url.deletingPathExtension().lastPathComponent
             let data = TrackData(
                 id: url.path,
-                title: url.lastPathComponent.replacingOccurrences(of: ".\(url.pathExtension)", with: ""),
+                title: cleanTitle,
                 originalURL: url,
                 vocalStemURL: stemURLs[0],
                 bassStemURL: stemURLs[2],
@@ -301,14 +381,16 @@ final class AudioEngineManager: @unchecked Sendable {
                 otherStemURL: stemURLs[3]
             )
             
-            await MainActor.run { 
-                isSplitting = false 
+            await MainActor.run {
+                self.isSplitting = false
             }
             playSynced()
             return data
         } catch {
             print("Failed to load or split audio: \(error)")
-            await MainActor.run { isSplitting = false }
+            await MainActor.run {
+                self.isSplitting = false
+            }
             return nil
         }
     }
@@ -330,9 +412,12 @@ final class AudioEngineManager: @unchecked Sendable {
         }
     }
     
+    // MARK: - Exporting Stems with Multi-Stage Progression and Completion
+    
     @MainActor
-    func exportStems() {
-        guard let fVocals = fileVocals, let fBass = fileBass, let fDrums = fileDrums, let fOther = fileOther else { return }
+    public func exportStems() {
+        guard let fVocals = fileVocals, let fDrums = fileDrums, let fBass = fileBass, let fOther = fileOther else { return }
+        
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(currentTrackName)_Stems.zip"
         panel.allowedContentTypes = [UTType.zip]
@@ -340,51 +425,65 @@ final class AudioEngineManager: @unchecked Sendable {
         if panel.runModal() == .OK, let targetURL = panel.url {
             let trackName = currentTrackName
             let vocalsURL = fVocals.url
-            let bassURL = fBass.url
             let drumsURL = fDrums.url
+            let bassURL = fBass.url
             let otherURL = fOther.url
             
-            self.isExporting = true
-            self.exportProgress = 0.0
+            self.exportState = .exporting(stage: "PREPARING", percent: 0.05)
+            self.exportProgress = 0.05
+            
             Task.detached {
-                let progressTask = Task {
-                    var p = 0.0
-                    while p < 0.90 && !Task.isCancelled {
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                        p += 0.05
-                        let currentP = p
-                        await MainActor.run { self.exportProgress = currentP }
-                    }
-                }
-                
-                defer {
-                    Task { @MainActor in 
-                        self.exportProgress = 1.0
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        self.isExporting = false 
-                    }
-                    progressTask.cancel()
-                }
-                
                 let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
                 try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
                 
                 let vDest = tempDir.appendingPathComponent("\(trackName)_Vocals.wav")
-                let bDest = tempDir.appendingPathComponent("\(trackName)_Bass.wav")
                 let dDest = tempDir.appendingPathComponent("\(trackName)_Drums.wav")
+                let bDest = tempDir.appendingPathComponent("\(trackName)_Bass.wav")
                 let oDest = tempDir.appendingPathComponent("\(trackName)_Other.wav")
                 
+                // Stage 1: Copy Vocals (20%)
                 try? FileManager.default.copyItem(at: vocalsURL, to: vDest)
-                try? FileManager.default.copyItem(at: bassURL, to: bDest)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "VOCALS", percent: 0.25)
+                    self.exportProgress = 0.25
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                
+                // Stage 2: Copy Drums (45%)
                 try? FileManager.default.copyItem(at: drumsURL, to: dDest)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "DRUMS", percent: 0.45)
+                    self.exportProgress = 0.45
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                
+                // Stage 3: Copy Bass (65%)
+                try? FileManager.default.copyItem(at: bassURL, to: bDest)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "BASS", percent: 0.65)
+                    self.exportProgress = 0.65
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                
+                // Stage 4: Copy Other (80%)
                 try? FileManager.default.copyItem(at: otherURL, to: oDest)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "OTHER", percent: 0.80)
+                    self.exportProgress = 0.80
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 
-                let zipDest = tempDir.appendingPathComponent("out.zip")
+                // Stage 5: Compress ZIP (95%)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "ZIP", percent: 0.90)
+                    self.exportProgress = 0.90
+                }
                 
+                let zipDest = tempDir.appendingPathComponent("stems.zip")
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
                 process.currentDirectoryURL = tempDir
-                process.arguments = ["-j", zipDest.path, vDest.path, bDest.path, dDest.path, oDest.path]
+                process.arguments = ["-j", "-q", zipDest.path, vDest.path, dDest.path, bDest.path, oDest.path]
                 try? process.run()
                 process.waitUntilExit()
                 
@@ -395,16 +494,35 @@ final class AudioEngineManager: @unchecked Sendable {
                     try? FileManager.default.moveItem(at: zipDest, to: targetURL)
                 }
                 try? FileManager.default.removeItem(at: tempDir)
-                progressTask.cancel()
+                
+                // Stage 6: Finalizing & Completed State (shows COMPLETED for 2.0 seconds)
+                await MainActor.run {
+                    self.exportState = .completed
+                    self.exportProgress = 1.0
+                }
+                
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                
+                await MainActor.run {
+                    self.exportState = .idle
+                    self.exportProgress = 0.0
+                }
             }
         }
     }
     
+    // MARK: - Synchronized Playback Graph Scheduling
+    
     private func scheduleAllPlayers(at time: AVAudioTime?) {
-        guard let fVocals = fileVocals, let fBass = fileBass, let fDrums = fileDrums, let fOther = fileOther, let aFile = audioFile else { return }
+        guard let fVocals = fileVocals,
+              let fDrums = fileDrums,
+              let fBass = fileBass,
+              let fOther = fileOther,
+              let aFile = audioFile else { return }
+        
         vocalPlayer.stop()
-        bassPlayer.stop()
         drumPlayer.stop()
+        bassPlayer.stop()
         otherPlayer.stop()
         originalPlayer.stop()
         
@@ -418,14 +536,14 @@ final class AudioEngineManager: @unchecked Sendable {
         let session = UUID()
         self.playbackSessionID = session
         
-        vocalPlayer.scheduleFile(fVocals, at: time) { [weak self] in 
+        vocalPlayer.scheduleFile(fVocals, at: time) { [weak self] in
             Task { @MainActor in
                 guard self?.playbackSessionID == session else { return }
                 self?.onPlaybackEnded()
             }
         }
-        bassPlayer.scheduleFile(fBass, at: time, completionHandler: nil)
         drumPlayer.scheduleFile(fDrums, at: time, completionHandler: nil)
+        bassPlayer.scheduleFile(fBass, at: time, completionHandler: nil)
         otherPlayer.scheduleFile(fOther, at: time, completionHandler: nil)
         originalPlayer.scheduleFile(aFile, at: time, completionHandler: nil)
     }
@@ -444,60 +562,72 @@ final class AudioEngineManager: @unchecked Sendable {
             try? engine.start()
         }
         let nodeTime = vocalPlayer.lastRenderTime ?? AVAudioTime(hostTime: mach_absolute_time())
-        let startTime = AVAudioTime(hostTime: nodeTime.hostTime + AVAudioTime.hostTime(forSeconds: 0.1))
+        let startTime = AVAudioTime(hostTime: nodeTime.hostTime + AVAudioTime.hostTime(forSeconds: 0.05))
         
         vocalPlayer.play(at: startTime)
-        bassPlayer.play(at: startTime)
         drumPlayer.play(at: startTime)
+        bassPlayer.play(at: startTime)
         otherPlayer.play(at: startTime)
         originalPlayer.play(at: startTime)
         
         Task { @MainActor in
-            isPlaying = true
-            startTimer()
+            self.isPlaying = true
+            self.startPlaybackTimer()
         }
     }
     
-    func togglePlayback() {
+    public func togglePlayback() {
         if isPlaying {
             vocalPlayer.pause()
-            bassPlayer.pause()
             drumPlayer.pause()
+            bassPlayer.pause()
             otherPlayer.pause()
             originalPlayer.pause()
             timer?.invalidate()
             isPlaying = false
-            clearWaveform()
+            clearVisualizers()
         } else {
             playSynced()
         }
     }
     
-    private func startTimer() {
+    // High-precision 60Hz Playback Timer (16.6ms) for Instantaneous Time & Progress Sync
+    private func startPlaybackTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, let file = self.audioFile, let lastTime = self.vocalPlayer.lastRenderTime, let playerTime = self.vocalPlayer.playerTime(forNodeTime: lastTime) else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            guard let self = self,
+                  let file = self.audioFile,
+                  let lastTime = self.vocalPlayer.lastRenderTime,
+                  let playerTime = self.vocalPlayer.playerTime(forNodeTime: lastTime) else { return }
             
             let elapsedFrames = Double(playerTime.sampleTime) + Double(self.seekFrameOffset)
-            let elapsed = elapsedFrames / playerTime.sampleRate
+            let elapsed = max(0, elapsedFrames / playerTime.sampleRate)
             let duration = Double(file.length) / file.processingFormat.sampleRate
+            guard duration > 0 else { return }
+            
+            let progress = max(0, min(1, elapsed / duration))
             
             Task { @MainActor in
-                self.playbackProgress = max(0, min(1, elapsed / duration))
-                self.updateTimeString(for: self.playbackProgress)
+                self.playbackProgress = progress
+                
+                let mins = Int(elapsed) / 60
+                let secs = Int(elapsed) % 60
+                let rem = max(0, duration - elapsed)
+                let rMins = Int(rem) / 60
+                let rSecs = Int(rem) % 60
+                self.currentTimeString = String(format: "%02d:%02d / -%02d:%02d", mins, secs, rMins, rSecs)
             }
         }
     }
     
     @MainActor
-    func updateTimeString(for progress: Double) {
+    public func updateTimeString(for progress: Double) {
         guard let file = audioFile else { return }
         let duration = Double(file.length) / file.processingFormat.sampleRate
         let elapsed = duration * progress
         
         let mins = Int(elapsed) / 60
         let secs = Int(elapsed) % 60
-        
         let rem = max(0, duration - elapsed)
         let rMins = Int(rem) / 60
         let rSecs = Int(rem) % 60
@@ -505,14 +635,18 @@ final class AudioEngineManager: @unchecked Sendable {
     }
     
     @MainActor
-    func seek(toPercentage percentage: Double) {
-        guard let fVocals = fileVocals, let fBass = fileBass, let fDrums = fileDrums, let fOther = fileOther, let aFile = audioFile else { return }
+    public func seek(toPercentage percentage: Double) {
+        guard let fVocals = fileVocals,
+              let fDrums = fileDrums,
+              let fBass = fileBass,
+              let fOther = fileOther,
+              let aFile = audioFile else { return }
         
         let wasPlaying = isPlaying
         
         vocalPlayer.stop()
-        bassPlayer.stop()
         drumPlayer.stop()
+        bassPlayer.stop()
         otherPlayer.stop()
         originalPlayer.stop()
         
@@ -525,14 +659,14 @@ final class AudioEngineManager: @unchecked Sendable {
         let session = UUID()
         self.playbackSessionID = session
         
-        vocalPlayer.scheduleSegment(fVocals, startingFrame: targetFrame, frameCount: framesToPlay, at: nil) { [weak self] in 
+        vocalPlayer.scheduleSegment(fVocals, startingFrame: targetFrame, frameCount: framesToPlay, at: nil) { [weak self] in
             Task { @MainActor in
                 guard self?.playbackSessionID == session else { return }
                 self?.onPlaybackEnded()
             }
         }
-        bassPlayer.scheduleSegment(fBass, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         drumPlayer.scheduleSegment(fDrums, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
+        bassPlayer.scheduleSegment(fBass, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         otherPlayer.scheduleSegment(fOther, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         originalPlayer.scheduleSegment(aFile, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         
@@ -542,225 +676,6 @@ final class AudioEngineManager: @unchecked Sendable {
         if wasPlaying {
             isPlaying = false
             playSynced()
-        }
-    }
-}
-
-import CoreML
-import Accelerate
-
-enum DemucsError: Error {
-    case modelNotFound
-    case compilationFailed
-    case assetReaderFailed
-    case conversionFailed
-}
-
-actor DemucsEngine {
-    static let shared = DemucsEngine()
-    
-    private var models: [MLModel] = []
-    private let concurrencyCount = 3
-    private let chunkSize: Int = 441000 // 10 seconds at 44.1kHz
-    
-    private init() {}
-    
-    func initializeModel() async throws {
-        if models.count == concurrencyCount { return }
-        
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Isolate")
-        try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        
-        let compiledURL = appSupport.appendingPathComponent("HTDemucs.mlmodelc")
-        
-        if !FileManager.default.fileExists(atPath: compiledURL.path) {
-            let sourceURL = appSupport.appendingPathComponent("HTDemucs_CoreML_FP16.mlpackage")
-            guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-                throw DemucsError.modelNotFound
-            }
-            let tempURL = try await Task.detached { try MLModel.compileModel(at: sourceURL) }.value
-            try FileManager.default.moveItem(at: tempURL, to: compiledURL)
-        }
-        
-        let config = MLModelConfiguration()
-        config.computeUnits = .all
-        
-        let count = concurrencyCount
-        models = try await Task.detached {
-            var loaded: [MLModel] = []
-            for _ in 0..<count {
-                loaded.append(try MLModel(contentsOf: compiledURL, configuration: config))
-            }
-            return loaded
-        }.value
-    }
-    
-    func splitAudio(url: URL, progressCallback: @escaping @Sendable (Double) -> Void) async throws -> [URL] {
-        try await initializeModel()
-        guard models.count == concurrencyCount else { throw DemucsError.modelNotFound }
-        
-        let inFile = try AVAudioFile(forReading: url)
-        let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44100, channels: 2, interleaved: false)!
-        
-        guard let converter = AVAudioConverter(from: inFile.processingFormat, to: targetFormat) else {
-            throw DemucsError.conversionFailed
-        }
-        
-        let estimatedFrames = AVAudioFrameCount(Double(inFile.length) * (44100.0 / inFile.fileFormat.sampleRate)) + 44100
-        let fullSongBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: estimatedFrames)!
-        
-        let inputBuffer = AVAudioPCMBuffer(pcmFormat: inFile.processingFormat, frameCapacity: AVAudioFrameCount(inFile.length))!
-        try inFile.read(into: inputBuffer)
-        
-        var hasRead = false
-        var error: NSError? = nil
-        converter.convert(to: fullSongBuffer, error: &error) { inNumPackets, outStatus in
-            if hasRead {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            outStatus.pointee = .haveData
-            hasRead = true
-            return inputBuffer
-        }
-        
-        if let err = error {
-            print("Conversion error: \(err)")
-            throw DemucsError.conversionFailed
-        }
-        
-        let totalFrames = Int(fullSongBuffer.frameLength)
-        guard totalFrames > 0, let inL = fullSongBuffer.floatChannelData?[0], let inR = fullSongBuffer.floatChannelData?[1] else {
-            throw DemucsError.conversionFailed
-        }
-        
-        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        
-        let stemNames = ["vocals", "drums", "bass", "other"]
-        var writers: [AVAudioFile] = []
-        var outputURLs: [URL] = []
-        
-        for i in 0..<4 {
-            let stemURL = cacheDir.appendingPathComponent("\(stemNames[i]).wav")
-            let writer = try AVAudioFile(forWriting: stemURL, settings: targetFormat.settings)
-            writers.append(writer)
-            outputURLs.append(stemURL)
-        }
-        
-        let hopSize = chunkSize / 2
-        var window = [Float](repeating: 0, count: chunkSize)
-        vDSP_hann_window(&window, vDSP_Length(chunkSize), Int32(vDSP_HANN_NORM))
-        
-        // 8 arrays: [VocalsL, VocalsR, DrumsL, DrumsR, BassL, BassR, OtherL, OtherR]
-        var accumulators = [[Float]](repeating: [Float](repeating: 0.0, count: totalFrames), count: 8)
-        
-        let numChunks = Int(ceil(Double(totalFrames) / Double(hopSize)))
-        let localModels = models
-        
-        try await withThrowingTaskGroup(of: (Int, Int, Int, MLMultiArray).self) { group in
-            var activeTasks = 0
-            var completedChunks = 0
-            
-            for chunkIdx in 0..<numChunks {
-                let currentFrame = chunkIdx * hopSize
-                if currentFrame >= totalFrames { break }
-                
-                if activeTasks >= concurrencyCount {
-                    if let result = try await group.next() {
-                        activeTasks -= 1
-                        completedChunks += 1
-                        let (_, cFrame, rFrames, outArr) = result
-                        self.applyOverlapAdd(outMultiArray: outArr, accumulators: &accumulators, currentFrame: cFrame, readFrames: rFrames, window: window)
-                        progressCallback(min(1.0, Double(completedChunks) / Double(numChunks)))
-                    }
-                }
-                
-                let assignedModel = localModels[chunkIdx % concurrencyCount]
-                let remain = totalFrames - currentFrame
-                let readFrames = min(chunkSize, remain)
-                
-                let inShape: [NSNumber] = [1, 2, NSNumber(value: chunkSize)]
-                let inputArray = try MLMultiArray(shape: inShape, dataType: .float32)
-                
-                let ptrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
-                let ptrR = ptrL.advanced(by: chunkSize)
-                
-                vDSP_vclr(ptrL, 1, vDSP_Length(chunkSize * 2))
-                
-                for i in 0..<readFrames {
-                    ptrL[i] = inL[currentFrame + i]
-                    ptrR[i] = inR[currentFrame + i]
-                }
-                
-                group.addTask(priority: .userInitiated) {
-                    let inputProvider = try MLDictionaryFeatureProvider(dictionary: ["audio": MLFeatureValue(multiArray: inputArray)])
-                    let prediction = try assignedModel.prediction(from: inputProvider)
-                    let resultMultiArray = prediction.featureValue(for: "sources")!.multiArrayValue!
-                    return (chunkIdx, currentFrame, readFrames, resultMultiArray)
-                }
-                
-                activeTasks += 1
-            }
-            
-            while let result = try await group.next() {
-                completedChunks += 1
-                let (_, cFrame, rFrames, outArr) = result
-                self.applyOverlapAdd(outMultiArray: outArr, accumulators: &accumulators, currentFrame: cFrame, readFrames: rFrames, window: window)
-                progressCallback(min(1.0, Double(completedChunks) / Double(numChunks)))
-            }
-        }
-        
-        // Write the fully assembled accumulators to WAV files
-        let outChunkBuffers = (0..<4).map { _ in
-            AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(totalFrames))!
-        }
-        
-        for stemIdx in 0..<4 {
-            let buffer = outChunkBuffers[stemIdx]
-            buffer.frameLength = AVAudioFrameCount(totalFrames)
-            let destL = buffer.floatChannelData![0]
-            let destR = buffer.floatChannelData![1]
-            
-            let srcL = accumulators[stemIdx * 2]
-            let srcR = accumulators[stemIdx * 2 + 1]
-            
-            destL.update(from: srcL, count: totalFrames)
-            destR.update(from: srcR, count: totalFrames)
-            
-            try writers[stemIdx].write(from: buffer)
-        }
-        
-        return outputURLs
-    }
-    
-    private nonisolated func applyOverlapAdd(outMultiArray: MLMultiArray, accumulators: inout [[Float]], currentFrame: Int, readFrames: Int, window: [Float]) {
-        let isFloat32 = outMultiArray.dataType == .float32
-        let strides = outMultiArray.strides
-        let stemStride = strides[1].intValue
-        let channelStride = strides[2].intValue
-        
-        for stemIdx in 0..<4 {
-            let outStemOffset = stemIdx * stemStride
-            if isFloat32 {
-                let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float.self)
-                let srcL = outPtr.advanced(by: outStemOffset)
-                let srcR = outPtr.advanced(by: outStemOffset + channelStride)
-                for i in 0..<readFrames {
-                    let w = window[i]
-                    accumulators[stemIdx * 2][currentFrame + i] += srcL[i] * w
-                    accumulators[stemIdx * 2 + 1][currentFrame + i] += srcR[i] * w
-                }
-            } else {
-                let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float16.self)
-                let srcL = outPtr.advanced(by: outStemOffset)
-                let srcR = outPtr.advanced(by: outStemOffset + channelStride)
-                for i in 0..<readFrames {
-                    let w = window[i]
-                    accumulators[stemIdx * 2][currentFrame + i] += Float(srcL[i]) * w
-                    accumulators[stemIdx * 2 + 1][currentFrame + i] += Float(srcR[i]) * w
-                }
-            }
         }
     }
 }

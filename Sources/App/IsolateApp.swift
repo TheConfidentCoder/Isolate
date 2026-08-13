@@ -14,23 +14,28 @@ struct IsolateApp: App {
                 .environment(engineManager)
                 .modelContainer(for: TrackModel.self)
                 .preferredColorScheme(.dark)
-                .frame(minWidth: 950, minHeight: 600)
+                .frame(minWidth: 960, minHeight: 600)
                 .overlay {
                     if engineManager.isSplitting {
+                        // Detailed AI Stem Splitting Progress Modal
                         ZStack {
-                            Color.black.opacity(0.9)
-                            VStack(spacing: 20) {
-                                Text(engineManager.isCompilingModel ? "OPTIMIZING NEURAL ENGINE..." : "ANALYZING STEMS...")
-                                    .font(.custom("DotGothic16-Regular", size: 36))
+                            Color.black.opacity(0.92)
+                            
+                            VStack(spacing: 24) {
+                                // Header Status
+                                Text(engineManager.splitStatusMessage)
+                                    .font(.custom("DotGothic16-Regular", size: 28))
                                     .foregroundColor(.white)
+                                    .multilineTextAlignment(.center)
                                 
+                                // Progress Bar
                                 GeometryReader { geo in
                                     ZStack(alignment: .leading) {
                                         Path { path in
                                             path.move(to: CGPoint(x: 0, y: 4))
                                             path.addLine(to: CGPoint(x: geo.size.width, y: 4))
                                         }
-                                        .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 8, dash: [8, 8]))
+                                        .stroke(Color.white.opacity(0.15), style: StrokeStyle(lineWidth: 8, dash: [8, 8]))
                                         
                                         Path { path in
                                             path.move(to: CGPoint(x: 0, y: 4))
@@ -39,32 +44,62 @@ struct IsolateApp: App {
                                         .stroke(Color.red, style: StrokeStyle(lineWidth: 8, dash: [8, 8]))
                                     }
                                 }
-                                .frame(width: 400, height: 8)
+                                .frame(width: 440, height: 8)
                                 
-                                if !engineManager.isCompilingModel {
-                                    Text("\(Int(engineManager.splitProgress * 100))%")
-                                        .font(.custom("DotGothic16-Regular", size: 24))
-                                        .foregroundColor(.red)
-                                } else {
-                                    Text("FIRST RUN ONLY. THIS TAKES 30 SECS.")
-                                        .font(.custom("DotGothic16-Regular", size: 16))
-                                        .foregroundColor(.gray)
+                                // Metrics Readout
+                                HStack(spacing: 32) {
+                                    VStack(alignment: .center, spacing: 4) {
+                                        Text("PROGRESS")
+                                            .font(.custom("DotGothic16-Regular", size: 12))
+                                            .foregroundColor(.gray)
+                                        Text("\(Int(engineManager.splitProgress * 100))%")
+                                            .font(.custom("DotGothic16-Regular", size: 22))
+                                            .foregroundColor(.red)
+                                    }
+                                    
+                                    if engineManager.totalChunkCount > 0 {
+                                        VStack(alignment: .center, spacing: 4) {
+                                            Text("CHUNKS")
+                                                .font(.custom("DotGothic16-Regular", size: 12))
+                                                .foregroundColor(.gray)
+                                            Text("\(engineManager.currentChunkNumber)/\(engineManager.totalChunkCount)")
+                                                .font(.custom("DotGothic16-Regular", size: 22))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    
+                                    VStack(alignment: .center, spacing: 4) {
+                                        Text("ESTIMATED TIME")
+                                            .font(.custom("DotGothic16-Regular", size: 12))
+                                            .foregroundColor(.gray)
+                                        Text(engineManager.etaRemainingString)
+                                            .font(.custom("DotGothic16-Regular", size: 22))
+                                            .foregroundColor(.white)
+                                    }
                                 }
+                                
+                                Text("APPLE SILICON NEURAL ENGINE ACCELERATED")
+                                    .font(.custom("DotGothic16-Regular", size: 13))
+                                    .foregroundColor(.gray.opacity(0.8))
                             }
+                            .padding(40)
+                            .background(Color.black.opacity(0.8))
+                            .border(Color.white.opacity(0.15), width: 1)
                         }
                         .ignoresSafeArea()
                     } else if isTargeted {
+                        // Drag & Drop Target Overlay
                         ZStack {
-                            Color.black.opacity(0.8)
+                            Color.black.opacity(0.85)
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Color.red, style: StrokeStyle(lineWidth: 4, dash: [10]))
-                                .padding(20)
+                                .padding(24)
                             VStack(spacing: 20) {
                                 Image(systemName: "arrow.down.circle")
                                     .font(.system(size: 64))
                                     .foregroundColor(.red)
-                                Text("DROP TRACK TO LOAD")
-                                    .font(.custom("DotGothic16-Regular", size: 36))
+                                Text("DROP AUDIO TO ISOLATE STEMS")
+                                    .font(.custom("DotGothic16-Regular", size: 32))
                                     .foregroundColor(.red)
                             }
                         }
@@ -118,7 +153,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             LibraryView()
-                .navigationSplitViewColumnWidth(min: 250, ideal: 300)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 280)
         } detail: {
             PlayerView()
         }
