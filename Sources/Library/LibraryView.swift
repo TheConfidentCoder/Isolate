@@ -8,14 +8,18 @@ struct LibraryView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @Query(sort: \TrackModel.dateAdded, order: .reverse) private var tracks: [TrackModel]
     
-    @State private var isShowingRenameModal = false
-    @State private var isShowingDeleteModal = false
-    @State private var trackToRename: TrackModel? = nil
-    @State private var trackToDelete: TrackModel? = nil
-    @State private var renameText = ""
+    var onRenameTrack: ((TrackModel) -> Void)? = nil
+    var onDeleteTrack: ((TrackModel) -> Void)? = nil
+    
     @State private var activeMenuTrackID: String? = nil
     
-    public init() {}
+    public init(
+        onRenameTrack: ((TrackModel) -> Void)? = nil,
+        onDeleteTrack: ((TrackModel) -> Void)? = nil
+    ) {
+        self.onRenameTrack = onRenameTrack
+        self.onDeleteTrack = onDeleteTrack
+    }
     
     var body: some View {
         ZStack {
@@ -28,13 +32,19 @@ struct LibraryView: View {
                     
                     Spacer()
                     
-                    Button(action: importTrack) {
+                    Button(action: {
+                        Haptics.playClick()
+                        importTrack()
+                    }) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus.circle")
                             Text("IMPORT TRACK")
                         }
                         .font(.custom("DotGothic16-Regular", size: 14))
                         .foregroundColor(.red)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -84,14 +94,11 @@ struct LibraryView: View {
                                     },
                                     onRename: {
                                         activeMenuTrackID = nil
-                                        trackToRename = track
-                                        renameText = track.title
-                                        isShowingRenameModal = true
+                                        onRenameTrack?(track)
                                     },
                                     onDelete: {
                                         activeMenuTrackID = nil
-                                        trackToDelete = track
-                                        isShowingDeleteModal = true
+                                        onDeleteTrack?(track)
                                     }
                                 )
                                 .zIndex(activeMenuTrackID == track.id ? 999 : 1)
@@ -106,128 +113,6 @@ struct LibraryView: View {
             .onTapGesture {
                 if activeMenuTrackID != nil {
                     activeMenuTrackID = nil
-                }
-            }
-            
-            // MARK: - Nothing-Style Rename Modal
-            if isShowingRenameModal, let track = trackToRename {
-                ZStack {
-                    Color.black.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            isShowingRenameModal = false
-                        }
-                    
-                    VStack(spacing: 20) {
-                        Text("RENAME TRACK")
-                            .font(.custom("DotGothic16-Regular", size: 18))
-                            .foregroundColor(.white)
-                        
-                        TextField("Track Title", text: $renameText)
-                            .font(.custom("DotGothic16-Regular", size: 15))
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.black)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.red, lineWidth: 1))
-                            .foregroundColor(.white)
-                        
-                        HStack(spacing: 16) {
-                            Button("CANCEL") {
-                                isShowingRenameModal = false
-                            }
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.clear)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray, lineWidth: 1))
-                            .foregroundColor(.gray)
-                            .buttonStyle(.plain)
-                            
-                            Button("SAVE") {
-                                let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if !trimmed.isEmpty {
-                                    track.title = trimmed
-                                    try? modelContext.save()
-                                    if engineManager.currentTrackName == track.title.uppercased() || engineManager.currentTrackName.contains(track.id) {
-                                        engineManager.currentTrackName = trimmed.uppercased()
-                                    }
-                                }
-                                isShowingRenameModal = false
-                            }
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
-                            .background(Color.red)
-                            .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(28)
-                    .frame(width: 340)
-                    .background(Color.black.opacity(0.95))
-                    .border(Color.white.opacity(0.2), width: 1)
-                    .overlay(CornerBrackets())
-                }
-            }
-            
-            // MARK: - Delete Confirmation Modal
-            if isShowingDeleteModal, let track = trackToDelete {
-                ZStack {
-                    Color.black.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            isShowingDeleteModal = false
-                        }
-                    
-                    VStack(spacing: 18) {
-                        Text("DELETE TRACK?")
-                            .font(.custom("DotGothic16-Regular", size: 18))
-                            .foregroundColor(.red)
-                        
-                        Text("Are you sure you want to delete '\(track.title)' and its isolated stems?")
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                        
-                        HStack(spacing: 16) {
-                            Button("CANCEL") {
-                                isShowingDeleteModal = false
-                            }
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.clear)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray, lineWidth: 1))
-                            .foregroundColor(.gray)
-                            .buttonStyle(.plain)
-                            
-                            Button("DELETE") {
-                                // Delete stem files from disk
-                                try? FileManager.default.removeItem(at: track.vocalStemURL)
-                                try? FileManager.default.removeItem(at: track.drumStemURL)
-                                try? FileManager.default.removeItem(at: track.bassStemURL)
-                                try? FileManager.default.removeItem(at: track.otherStemURL)
-                                
-                                modelContext.delete(track)
-                                try? modelContext.save()
-                                isShowingDeleteModal = false
-                            }
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(Color.red)
-                            .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(28)
-                    .frame(width: 340)
-                    .background(Color.black.opacity(0.95))
-                    .border(Color.white.opacity(0.2), width: 1)
-                    .overlay(CornerBrackets())
                 }
             }
         }

@@ -254,6 +254,7 @@ public actor DemucsEngine {
         // Stage 3: Sequential Pipelined Inference Loop (3% to 95%)
         let inferenceStartTime = CACurrentMediaTime()
         for chunkIdx in 0..<numChunks {
+            try Task.checkCancellation()
             let chunkStart = chunkIdx * hopSize
             let chunkEnd = min(chunkStart + chunkSize, paddedFrames)
             let readFrames = chunkEnd - chunkStart
@@ -322,6 +323,7 @@ public actor DemucsEngine {
         )!
         
         for stemIdx in 0..<4 {
+            try Task.checkCancellation()
             let stemName = Self.stemNames[stemIdx].uppercased()
             let stemFraction = 0.95 + (0.05 * (Double(stemIdx + 1) / 4.0))
             let writeElapsed = CACurrentMediaTime() - startTime

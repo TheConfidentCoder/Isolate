@@ -58,6 +58,7 @@ public struct PlayerView: View {
                             .frame(width: 28, height: 28)
                             .background(Color.white.opacity(0.06))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }

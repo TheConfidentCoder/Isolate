@@ -329,32 +329,52 @@ public final class AudioEngineManager: @unchecked Sendable {
         }
     }
     
+    // MARK: - Active Async Tasks
+    private var activeSplitTask: Task<TrackData?, Error>?
+    
+    @MainActor
+    public func cancelSplitAudio() {
+        guard isSplitting else { return }
+        activeSplitTask?.cancel()
+        activeSplitTask = nil
+        etaTimer?.invalidate()
+        etaTimer = nil
+        isSplitting = false
+        splitProgress = 0.0
+        splitStatusMessage = ""
+        currentChunkNumber = 0
+        totalChunkCount = 0
+        targetEtaSeconds = 0
+        etaRemainingString = "00:00"
+        Haptics.playClick()
+    }
+    
     public func loadAndSplitAudio(url: URL) async -> TrackData? {
-        let asset = AVURLAsset(url: url)
-        let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
-        let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
-        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.58 + 1.2)))
-        
-        await MainActor.run {
-            self.currentTrackName = url.lastPathComponent.uppercased()
-            self.isSplitting = true
-            self.isCompilingModel = false
-            self.splitProgress = 0.0 // Pure 0% Start
-            self.currentChunkNumber = 0
-            self.totalChunkCount = estimatedChunks
-            self.targetEtaSeconds = initialEtaSeconds
-            self.etaRemainingString = String(format: "%02d:%02d", initialEtaSeconds / 60, initialEtaSeconds % 60)
-            self.splitStatusMessage = "DECODING AUDIO TRACK..."
-            if self.isPlaying { self.togglePlayback() }
-            self.startEtaCountdownTimer()
-        }
-        
-        extractMetadata(url: url)
-        
-        do {
+        let task = Task<TrackData?, Error> {
+            let asset = AVURLAsset(url: url)
+            let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
+            let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
+            let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.58 + 1.2)))
+            
+            await MainActor.run {
+                self.currentTrackName = url.lastPathComponent.uppercased()
+                self.isSplitting = true
+                self.isCompilingModel = false
+                self.splitProgress = 0.0 // Pure 0% Start
+                self.currentChunkNumber = 0
+                self.totalChunkCount = estimatedChunks
+                self.targetEtaSeconds = initialEtaSeconds
+                self.etaRemainingString = String(format: "%02d:%02d", initialEtaSeconds / 60, initialEtaSeconds % 60)
+                self.splitStatusMessage = "DECODING AUDIO TRACK..."
+                if self.isPlaying { self.togglePlayback() }
+                self.startEtaCountdownTimer()
+            }
+            
+            extractMetadata(url: url)
+            
             let stemURLs = try await DemucsEngine.shared.splitAudio(url: url) { [weak self] progressInfo in
                 Task { @MainActor in
-                    guard let self = self else { return }
+                    guard let self = self, self.isSplitting else { return }
                     self.splitProgress = progressInfo.fraction
                     self.currentChunkNumber = progressInfo.currentChunk
                     self.totalChunkCount = progressInfo.totalChunks
@@ -372,6 +392,8 @@ public final class AudioEngineManager: @unchecked Sendable {
                     self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
                 }
             }
+            
+            try Task.checkCancellation()
             
             let fVocals = try AVAudioFile(forReading: stemURLs[0])
             let fDrums = try AVAudioFile(forReading: stemURLs[1])
@@ -406,12 +428,25 @@ public final class AudioEngineManager: @unchecked Sendable {
             // Auto-Play Isolated Stems on Completion (User Requirement A10)
             playSynced()
             return data
-        } catch {
-            print("Failed to load or split audio: \(error)")
+        }
+        
+        await MainActor.run {
+            self.activeSplitTask = task
+        }
+        
+        do {
+            let result = try await task.value
             await MainActor.run {
+                self.activeSplitTask = nil
+            }
+            return result
+        } catch {
+            await MainActor.run {
+                self.activeSplitTask = nil
                 self.etaTimer?.invalidate()
                 self.etaTimer = nil
                 self.isSplitting = false
+                self.splitProgress = 0.0
             }
             return nil
         }
@@ -481,7 +516,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 let bDest = tempDir.appendingPathComponent("\(trackName)_Bass.wav")
                 let oDest = tempDir.appendingPathComponent("\(trackName)_Other.wav")
                 
-                // Stage 1: Copy Stems (5% to 28%)
+                // Stage 1: Copy Stems (5% to 30%)
                 try? FileManager.default.copyItem(at: vocalsURL, to: vDest)
                 await MainActor.run {
                     self.exportState = .exporting(stage: "COPYING", percent: 0.12)
@@ -506,8 +541,15 @@ public final class AudioEngineManager: @unchecked Sendable {
                     self.exportProgress = 0.30
                 }
                 
-                // Stage 2: Compressing ZIP Archive (30% to 95%)
+                // Stage 2: Compressing ZIP Archive (30% to 96% with Dynamic Byte Pacing)
                 let zipDest = tempDir.appendingPathComponent("stems.zip")
+                
+                let vSize = (try? FileManager.default.attributesOfItem(atPath: vDest.path)[.size] as? Int64) ?? 40_000_000
+                let dSize = (try? FileManager.default.attributesOfItem(atPath: dDest.path)[.size] as? Int64) ?? 40_000_000
+                let bSize = (try? FileManager.default.attributesOfItem(atPath: bDest.path)[.size] as? Int64) ?? 40_000_000
+                let oSize = (try? FileManager.default.attributesOfItem(atPath: oDest.path)[.size] as? Int64) ?? 40_000_000
+                let totalExpectedZipBytes = max(10_000_000, Double(vSize + dSize + bSize + oSize) * 0.70)
+                
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
                 process.currentDirectoryURL = tempDir
@@ -515,20 +557,24 @@ public final class AudioEngineManager: @unchecked Sendable {
                 
                 try? process.run()
                 
-                // Active progression loop while zip executes
-                var zipProgress = 0.32
+                var currentZipP = 0.30
                 while process.isRunning {
-                    zipProgress = min(0.94, zipProgress + 0.04)
-                    let currentZipP = zipProgress
+                    let zipCurrentBytes = Double((try? FileManager.default.attributesOfItem(atPath: zipDest.path)[.size] as? Int64) ?? 0)
+                    let ratio = min(1.0, zipCurrentBytes / totalExpectedZipBytes)
+                    let targetP = 0.30 + (0.66 * ratio)
+                    currentZipP = max(currentZipP + 0.015, 0.35 * targetP + 0.65 * currentZipP)
+                    currentZipP = min(0.96, currentZipP)
+                    
+                    let reportP = currentZipP
                     await MainActor.run {
-                        self.exportState = .exporting(stage: "ZIPPING", percent: currentZipP)
-                        self.exportProgress = currentZipP
+                        self.exportState = .exporting(stage: "ZIPPING", percent: reportP)
+                        self.exportProgress = reportP
                     }
-                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    try? await Task.sleep(nanoseconds: 80_000_000)
                 }
                 process.waitUntilExit()
                 
-                // Stage 3: Finalizing (95% to 100%)
+                // Stage 3: Finalizing (96% to 100%)
                 await MainActor.run {
                     self.exportState = .exporting(stage: "SAVING", percent: 0.98)
                     self.exportProgress = 0.98
