@@ -8,6 +8,13 @@ struct IsolateApp: App {
     @State private var isTargeted = false
     @Environment(\.modelContext) private var modelContext
     
+    init() {
+        // Pre-warm CoreML Demucs Neural Engine pipeline in the background on startup
+        Task.detached(priority: .userInitiated) {
+            await DemucsEngine.shared.prewarmModel()
+        }
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -24,30 +31,16 @@ struct IsolateApp: App {
                             VStack(spacing: 24) {
                                 // Header Status
                                 Text(engineManager.splitStatusMessage)
-                                    .font(.custom("DotGothic16-Regular", size: 28))
+                                    .font(.custom("DotGothic16-Regular", size: 26))
                                     .foregroundColor(.white)
                                     .multilineTextAlignment(.center)
                                 
-                                // Progress Bar
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        Path { path in
-                                            path.move(to: CGPoint(x: 0, y: 4))
-                                            path.addLine(to: CGPoint(x: geo.size.width, y: 4))
-                                        }
-                                        .stroke(Color.white.opacity(0.15), style: StrokeStyle(lineWidth: 8, dash: [8, 8]))
-                                        
-                                        Path { path in
-                                            path.move(to: CGPoint(x: 0, y: 4))
-                                            path.addLine(to: CGPoint(x: max(0, geo.size.width * engineManager.splitProgress), y: 4))
-                                        }
-                                        .stroke(Color.red, style: StrokeStyle(lineWidth: 8, dash: [8, 8]))
-                                    }
-                                }
-                                .frame(width: 440, height: 8)
+                                // Discrete LED Hardware Progress Bar
+                                ModalDotMatrixProgressBar(progress: engineManager.splitProgress)
+                                    .frame(width: 440, height: 10)
                                 
                                 // Metrics Readout
-                                HStack(spacing: 32) {
+                                HStack(spacing: 36) {
                                     VStack(alignment: .center, spacing: 4) {
                                         Text("PROGRESS")
                                             .font(.custom("DotGothic16-Regular", size: 12))
@@ -79,12 +72,13 @@ struct IsolateApp: App {
                                 }
                                 
                                 Text("APPLE SILICON NEURAL ENGINE ACCELERATED")
-                                    .font(.custom("DotGothic16-Regular", size: 13))
+                                    .font(.custom("DotGothic16-Regular", size: 12))
                                     .foregroundColor(.gray.opacity(0.8))
                             }
                             .padding(40)
-                            .background(Color.black.opacity(0.8))
-                            .border(Color.white.opacity(0.15), width: 1)
+                            .background(Color.black.opacity(0.9))
+                            .border(Color.white.opacity(0.18), width: 1)
+                            .overlay(CornerBrackets())
                         }
                         .ignoresSafeArea()
                     } else if isTargeted {
@@ -145,6 +139,29 @@ struct IsolateApp: App {
                     }
                 }
             }
+        }
+    }
+}
+
+struct ModalDotMatrixProgressBar: View {
+    let progress: Double
+    
+    var body: some View {
+        GeometryReader { geo in
+            let blockWidth: CGFloat = 8.0
+            let blockSpacing: CGFloat = 4.0
+            let totalUnitWidth = blockWidth + blockSpacing
+            let blockCount = max(1, Int(geo.size.width / totalUnitWidth))
+            let activeCount = Int(round(Double(blockCount) * max(0, min(1, progress))))
+            
+            HStack(spacing: blockSpacing) {
+                ForEach(0..<blockCount, id: \.self) { i in
+                    Rectangle()
+                        .fill(i < activeCount ? Color.red : Color.white.opacity(0.15))
+                        .frame(width: blockWidth, height: 8)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 }

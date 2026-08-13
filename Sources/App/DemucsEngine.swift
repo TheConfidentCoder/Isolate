@@ -48,7 +48,24 @@ public actor DemucsEngine {
     
     private init() {}
     
-    // MARK: - Model Loading & Initialization
+    // MARK: - Model Pre-Warming & Loading
+    
+    public func prewarmModel() async {
+        do {
+            try await loadModelIfNeeded()
+            if let model = self.model {
+                let inputShape: [NSNumber] = [1, 2, NSNumber(value: Self.chunkSize)]
+                if let dummyInput = try? MLMultiArray(shape: inputShape, dataType: .float32) {
+                    let provider = try? MLDictionaryFeatureProvider(dictionary: ["audio": MLFeatureValue(multiArray: dummyInput)])
+                    if let p = provider {
+                        _ = try? await model.prediction(from: p)
+                    }
+                }
+            }
+        } catch {
+            print("Pre-warming Demucs model background task: \(error)")
+        }
+    }
     
     public func loadModelIfNeeded() async throws {
         if model != nil { return }
@@ -108,6 +125,18 @@ public actor DemucsEngine {
         url: URL,
         progressCallback: @escaping @Sendable (SplitProgressInfo) -> Void
     ) async throws -> [URL] {
+        let startTime = CACurrentMediaTime()
+        
+        // Stage 1: Immediate feedback for decoding
+        progressCallback(SplitProgressInfo(
+            fraction: 0.03,
+            currentChunk: 0,
+            totalChunks: 0,
+            elapsedSeconds: 0,
+            estimatedRemainingSeconds: 0,
+            statusMessage: "DECODING AUDIO TRACK..."
+        ))
+        
         try await loadModelIfNeeded()
         guard let mlModel = self.model else {
             throw DemucsError.modelNotFound("Model failed to load into memory.")
@@ -153,14 +182,27 @@ public actor DemucsEngine {
             return outputURLs
         }
         
+        // Stage 2: Tensor Prep and Symmetrical Reflection Padding
+        let padSize = Self.hopSize
+        let paddedFrames = originalFrames + 2 * padSize
+        let chunkSize = Self.chunkSize
+        let hopSize = Self.hopSize
+        let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
+        
+        progressCallback(SplitProgressInfo(
+            fraction: 0.12,
+            currentChunk: 0,
+            totalChunks: numChunks,
+            elapsedSeconds: CACurrentMediaTime() - startTime,
+            estimatedRemainingSeconds: Double(numChunks) * 0.14 + 1.0,
+            statusMessage: "PREPARING NEURAL ENGINE & TENSORS..."
+        ))
+        
         // 3. Compute Audio Energy / Standard Deviation for Demucs nominal scaling
         let (meanVal, stdVal) = computeMeanAndStd(channelL: inL, channelR: inR, count: originalFrames)
         let safeStd = max(stdVal, 1e-4)
         
         // 4. Apply Reflection Padding
-        // Padding by hopSize (5.0s) on both ends ensures sample 0 and sample (L-1) are center-windowed.
-        let padSize = Self.hopSize
-        let paddedFrames = originalFrames + 2 * padSize
         var paddedL = [Float](repeating: 0.0, count: paddedFrames)
         var paddedR = [Float](repeating: 0.0, count: paddedFrames)
         
@@ -192,32 +234,26 @@ public actor DemucsEngine {
         }
         
         // 5. Initialize Hann Window & Overlap-Add Accumulators
-        let chunkSize = Self.chunkSize
-        let hopSize = Self.hopSize
-        
         var hannWindow = [Float](repeating: 0.0, count: chunkSize)
         for i in 0..<chunkSize {
-            // Periodic Hann window: w[n] = 0.5 * (1 - cos(2*pi*n / N))
             hannWindow[i] = 0.5 * (1.0 - cosf(Float(2.0 * Double.pi * Double(i) / Double(chunkSize))))
         }
         
         // Accumulators for 4 stems × 2 channels (8 total) across paddedFrames
-        // Order: [VocalsL, VocalsR, DrumsL, DrumsR, BassL, BassR, OtherL, OtherR]
         var stemAccumulators = [[Float]](repeating: [Float](repeating: 0.0, count: paddedFrames), count: 8)
         var weightAccumulator = [Float](repeating: 0.0, count: paddedFrames)
-        
-        // Calculate number of chunks
-        let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
         
         let inputShape: [NSNumber] = [1, 2, NSNumber(value: chunkSize)]
         let inputArray = try MLMultiArray(shape: inputShape, dataType: .float32)
         let inPtrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
         let inPtrR = inPtrL.advanced(by: chunkSize)
         
-        let startTime = CACurrentMediaTime()
+        // Exponential Moving Average tracker for isolated pure chunk inference time
+        var emaChunkTime: Double = 0.14
         
-        // 6. Sequential Pipelined Inference Loop
+        // Stage 3: Sequential Pipelined Inference Loop (14% to 90%)
         for chunkIdx in 0..<numChunks {
+            let chunkStartTime = CACurrentMediaTime()
             let chunkStart = chunkIdx * hopSize
             let chunkEnd = min(chunkStart + chunkSize, paddedFrames)
             let readFrames = chunkEnd - chunkStart
@@ -233,7 +269,7 @@ public actor DemucsEngine {
                 }
             }
             
-            // CoreML Prediction on Neural Engine / GPU
+            // CoreML Prediction on Neural Engine
             let inputProvider = try MLDictionaryFeatureProvider(dictionary: [
                 "audio": MLFeatureValue(multiArray: inputArray)
             ])
@@ -255,25 +291,28 @@ public actor DemucsEngine {
                 std: safeStd
             )
             
-            // Progress Calculation with ETA
-            let elapsed = CACurrentMediaTime() - startTime
-            let fraction = Double(chunkIdx + 1) / Double(numChunks)
+            // Measure pure isolated chunk execution time
+            let chunkDuration = CACurrentMediaTime() - chunkStartTime
+            emaChunkTime = (chunkIdx == 0) ? min(chunkDuration, 0.25) : (0.4 * chunkDuration + 0.6 * emaChunkTime)
+            
             let remainingChunks = numChunks - (chunkIdx + 1)
-            let chunkRate = Double(chunkIdx + 1) / elapsed
-            let eta = chunkRate > 0 ? Double(remainingChunks) / chunkRate : 0.0
+            let estimatedSecondsRemaining = Double(remainingChunks) * emaChunkTime + 0.6
+            
+            // Fraction spans 14% to 90% during inference
+            let inferenceFraction = Double(chunkIdx + 1) / Double(numChunks)
+            let totalFraction = 0.14 + (0.76 * inferenceFraction)
             
             progressCallback(SplitProgressInfo(
-                fraction: fraction,
+                fraction: totalFraction,
                 currentChunk: chunkIdx + 1,
                 totalChunks: numChunks,
-                elapsedSeconds: elapsed,
-                estimatedRemainingSeconds: max(0, eta),
+                elapsedSeconds: CACurrentMediaTime() - startTime,
+                estimatedRemainingSeconds: max(0, estimatedSecondsRemaining),
                 statusMessage: "SEPARATING STEMS (CHUNK \(chunkIdx + 1)/\(numChunks))"
             ))
         }
         
-        // 7. Normalize Accumulators and Crop Padded Margins
-        // In the range [padSize ..< padSize + originalFrames], divide by weightAccumulator
+        // Stage 4: Normalize Accumulators & Write 32-Bit Lossless Stems (90% to 100%)
         let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: Self.sampleRate,
@@ -282,6 +321,18 @@ public actor DemucsEngine {
         )!
         
         for stemIdx in 0..<4 {
+            let stemName = Self.stemNames[stemIdx].uppercased()
+            let stemFraction = 0.90 + (0.10 * (Double(stemIdx + 1) / 4.0))
+            
+            progressCallback(SplitProgressInfo(
+                fraction: stemFraction,
+                currentChunk: numChunks,
+                totalChunks: numChunks,
+                elapsedSeconds: CACurrentMediaTime() - startTime,
+                estimatedRemainingSeconds: max(0, Double(4 - stemIdx) * 0.15),
+                statusMessage: "WRITING LOSSLESS \(stemName)..."
+            ))
+            
             let stemL = stemAccumulators[stemIdx * 2]
             let stemR = stemAccumulators[stemIdx * 2 + 1]
             
@@ -311,6 +362,15 @@ public actor DemucsEngine {
             try writer.write(from: outBuffer)
         }
         
+        progressCallback(SplitProgressInfo(
+            fraction: 1.0,
+            currentChunk: numChunks,
+            totalChunks: numChunks,
+            elapsedSeconds: CACurrentMediaTime() - startTime,
+            estimatedRemainingSeconds: 0,
+            statusMessage: "SEPARATION COMPLETE"
+        ))
+        
         return outputURLs
     }
     
@@ -329,7 +389,6 @@ public actor DemucsEngine {
             throw DemucsError.conversionFailed("Unable to create AVAudioConverter for \(url.lastPathComponent)")
         }
         
-        // Configure mastering quality resampler
         converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
         converter.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
         

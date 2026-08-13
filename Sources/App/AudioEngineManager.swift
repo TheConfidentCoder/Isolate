@@ -88,8 +88,10 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var splitProgress = 0.0
     public var currentChunkNumber = 0
     public var totalChunkCount = 0
-    public var etaRemainingString = "--:--"
+    public var etaRemainingString = "00:05"
     public var splitStatusMessage = "ANALYZING STEMS..."
+    private var etaTimer: Timer?
+    private var targetEtaSeconds: Int = 0
     
     // MARK: - Export State
     public var exportState: ExportState = .idle
@@ -328,16 +330,23 @@ public final class AudioEngineManager: @unchecked Sendable {
     }
     
     public func loadAndSplitAudio(url: URL) async -> TrackData? {
+        let asset = AVURLAsset(url: url)
+        let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
+        let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
+        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.14 + 1.2)))
+        
         await MainActor.run {
             self.currentTrackName = url.lastPathComponent.uppercased()
             self.isSplitting = true
             self.isCompilingModel = false
-            self.splitProgress = 0.0
+            self.splitProgress = 0.03
             self.currentChunkNumber = 0
-            self.totalChunkCount = 0
-            self.etaRemainingString = "--:--"
-            self.splitStatusMessage = "INITIALIZING APPLE NEURAL ENGINE..."
+            self.totalChunkCount = estimatedChunks
+            self.targetEtaSeconds = initialEtaSeconds
+            self.etaRemainingString = String(format: "%02d:%02d", initialEtaSeconds / 60, initialEtaSeconds % 60)
+            self.splitStatusMessage = "DECODING AUDIO TRACK..."
             if self.isPlaying { self.togglePlayback() }
+            self.startEtaCountdownTimer()
         }
         
         extractMetadata(url: url)
@@ -351,8 +360,10 @@ public final class AudioEngineManager: @unchecked Sendable {
                     self.totalChunkCount = progressInfo.totalChunks
                     self.splitStatusMessage = progressInfo.statusMessage
                     
-                    let etaMins = Int(progressInfo.estimatedRemainingSeconds) / 60
-                    let etaSecs = Int(progressInfo.estimatedRemainingSeconds) % 60
+                    let newEta = Int(round(progressInfo.estimatedRemainingSeconds))
+                    self.targetEtaSeconds = newEta
+                    let etaMins = newEta / 60
+                    let etaSecs = newEta % 60
                     self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
                 }
             }
@@ -382,16 +393,37 @@ public final class AudioEngineManager: @unchecked Sendable {
             )
             
             await MainActor.run {
+                self.etaTimer?.invalidate()
+                self.etaTimer = nil
                 self.isSplitting = false
+                self.splitProgress = 1.0
             }
             playSynced()
             return data
         } catch {
             print("Failed to load or split audio: \(error)")
             await MainActor.run {
+                self.etaTimer?.invalidate()
+                self.etaTimer = nil
                 self.isSplitting = false
             }
             return nil
+        }
+    }
+    
+    @MainActor
+    private func startEtaCountdownTimer() {
+        etaTimer?.invalidate()
+        etaTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.isSplitting else { return }
+                if self.targetEtaSeconds > 1 {
+                    self.targetEtaSeconds -= 1
+                    let mins = self.targetEtaSeconds / 60
+                    let secs = self.targetEtaSeconds % 60
+                    self.etaRemainingString = String(format: "%02d:%02d", mins, secs)
+                }
+            }
         }
     }
     
