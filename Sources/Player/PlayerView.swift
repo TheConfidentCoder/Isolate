@@ -231,13 +231,19 @@ public final class DotMatrixImageProcessor {
         )
         for y in 0..<height {
             for x in 0..<width {
-                let imgY = (height - 1) - y
-                let offset = (imgY * width + x) * 4
-                let r = Float(rawData[offset]) / 255.0
-                let g = Float(rawData[offset + 1]) / 255.0
-                let b = Float(rawData[offset + 2]) / 255.0
-                let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                matrix[y][x] = DotMatrixCell(r: r, g: g, b: b, luminance: lum)
+                // Upright 1:1 coordinates without vertical inversion
+                let offset = (y * width + x) * 4
+                let rRaw = Float(rawData[offset]) / 255.0
+                let gRaw = Float(rawData[offset + 1]) / 255.0
+                let bRaw = Float(rawData[offset + 2]) / 255.0
+                
+                // Enhanced Dynamic Range: gently lift shadows for vivid Nothing LED detail
+                let liftedR = powf(rRaw, 0.88)
+                let liftedG = powf(gRaw, 0.88)
+                let liftedB = powf(bRaw, 0.88)
+                let lum = 0.2126 * liftedR + 0.7152 * liftedG + 0.0722 * liftedB
+                
+                matrix[y][x] = DotMatrixCell(r: liftedR, g: liftedG, b: liftedB, luminance: lum)
             }
         }
         return matrix
@@ -266,28 +272,17 @@ struct AlbumArtView: View {
                             let cellHeight = size.height / CGFloat(gridSize)
                             let audioEnergy = engineManager.isPlaying ? Double(engineManager.masterWaveformAmplitudes.reduce(0, +) / Float(max(1, engineManager.masterWaveformAmplitudes.count))) : 0.0
                             let pulse = 1.0 + (audioEnergy * 0.12)
+                            let maxDotRadius = cellWidth * 0.42 // Ensures clean 0.4px physical LED aperture gap
                             
                             for y in 0..<gridSize {
                                 for x in 0..<gridSize {
                                     let cell = matrix[y][x]
                                     let lum = cell.luminance
                                     
-                                    guard lum > 0.02 else {
-                                        // Draw faint unlit LED cell for physical display depth
-                                        let dotRect = CGRect(
-                                            x: CGFloat(x) * cellWidth + cellWidth * 0.35,
-                                            y: CGFloat(y) * cellHeight + cellHeight * 0.35,
-                                            width: cellWidth * 0.3,
-                                            height: cellHeight * 0.3
-                                        )
-                                        context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(0.04)))
-                                        continue
-                                    }
-                                    
                                     // Scale dot radius smoothly based on luminance & audio pulse
-                                    let normalizedScale = CGFloat(0.40 + 0.60 * sqrt(lum))
-                                    let baseRadius = (cellWidth * 0.44) * normalizedScale * CGFloat(pulse)
-                                    let clampedRadius = min(cellWidth * 0.48, max(0.4, baseRadius))
+                                    let normalizedScale = CGFloat(0.48 + 0.52 * sqrt(lum))
+                                    let baseRadius = maxDotRadius * normalizedScale * CGFloat(pulse)
+                                    let clampedRadius = min(maxDotRadius, max(0.40, baseRadius))
                                     
                                     let centerX = CGFloat(x) * cellWidth + (cellWidth * 0.5)
                                     let centerY = CGFloat(y) * cellHeight + (cellHeight * 0.5)
@@ -298,12 +293,17 @@ struct AlbumArtView: View {
                                         height: clampedRadius * 2
                                     )
                                     
-                                    let dotColor = Color(
-                                        red: Double(cell.r),
-                                        green: Double(cell.g),
-                                        blue: Double(cell.b)
-                                    )
-                                    context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
+                                    if lum < 0.02 {
+                                        // Faint physical LED grid point for authentic unlit display depth
+                                        context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(0.04)))
+                                    } else {
+                                        let dotColor = Color(
+                                            red: Double(cell.r),
+                                            green: Double(cell.g),
+                                            blue: Double(cell.b)
+                                        )
+                                        context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
+                                    }
                                 }
                             }
                         }
