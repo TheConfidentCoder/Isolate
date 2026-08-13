@@ -333,7 +333,7 @@ public actor DemucsEngine {
                 totalChunks: numChunks,
                 elapsedSeconds: writeElapsed,
                 estimatedRemainingSeconds: remainingSecs,
-                statusMessage: "SAVING ISOLATED STEMS..."
+                statusMessage: "SAVING \(stemName) STEM..."
             ))
             
             let stemL = stemAccumulators[stemIdx * 2]
