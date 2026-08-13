@@ -439,12 +439,12 @@ struct TransportBar: View {
             .fixedSize(horizontal: true, vertical: false)
             .buttonStyle(.plain)
             
-            // Export Stems Button with Live Multi-Stage Progression & 'COMPLETED' state
+            // Export Stems Button with Fixed 140x34pt Hardware Dimensions & Centered Layout
             Button(action: {
                 Haptics.playClick()
                 engineManager.exportStems()
             }) {
-                Group {
+                ZStack {
                     switch engineManager.exportState {
                     case .idle:
                         Text("EXPORT STEMS")
@@ -461,8 +461,7 @@ struct TransportBar: View {
                     }
                 }
                 .font(.custom("DotGothic16-Regular", size: 13))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                .frame(width: 140, height: 34)
                 .background(
                     engineManager.exportState == .completed
                         ? Color.red
@@ -472,8 +471,7 @@ struct TransportBar: View {
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(engineManager.exportState == .completed ? Color.white : Color.red, lineWidth: 1)
                 )
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .contentShape(Rectangle())
             }
             .disabled(engineManager.isExporting || engineManager.exportState == .completed)
             .buttonStyle(.plain)

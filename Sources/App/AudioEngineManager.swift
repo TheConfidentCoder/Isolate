@@ -473,51 +473,58 @@ public final class AudioEngineManager: @unchecked Sendable {
                 let bDest = tempDir.appendingPathComponent("\(trackName)_Bass.wav")
                 let oDest = tempDir.appendingPathComponent("\(trackName)_Other.wav")
                 
-                // Stage 1: Copy Vocals (20%)
+                // Stage 1: Copy Stems (5% to 28%)
                 try? FileManager.default.copyItem(at: vocalsURL, to: vDest)
                 await MainActor.run {
-                    self.exportState = .exporting(stage: "VOCALS", percent: 0.25)
-                    self.exportProgress = 0.25
+                    self.exportState = .exporting(stage: "COPYING", percent: 0.12)
+                    self.exportProgress = 0.12
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000)
                 
-                // Stage 2: Copy Drums (45%)
                 try? FileManager.default.copyItem(at: drumsURL, to: dDest)
                 await MainActor.run {
-                    self.exportState = .exporting(stage: "DRUMS", percent: 0.45)
-                    self.exportProgress = 0.45
+                    self.exportState = .exporting(stage: "COPYING", percent: 0.18)
+                    self.exportProgress = 0.18
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000)
                 
-                // Stage 3: Copy Bass (65%)
                 try? FileManager.default.copyItem(at: bassURL, to: bDest)
                 await MainActor.run {
-                    self.exportState = .exporting(stage: "BASS", percent: 0.65)
-                    self.exportProgress = 0.65
+                    self.exportState = .exporting(stage: "COPYING", percent: 0.24)
+                    self.exportProgress = 0.24
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000)
                 
-                // Stage 4: Copy Other (80%)
                 try? FileManager.default.copyItem(at: otherURL, to: oDest)
                 await MainActor.run {
-                    self.exportState = .exporting(stage: "OTHER", percent: 0.80)
-                    self.exportProgress = 0.80
-                }
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                
-                // Stage 5: Compress ZIP (95%)
-                await MainActor.run {
-                    self.exportState = .exporting(stage: "ZIP", percent: 0.90)
-                    self.exportProgress = 0.90
+                    self.exportState = .exporting(stage: "COPYING", percent: 0.30)
+                    self.exportProgress = 0.30
                 }
                 
+                // Stage 2: Compressing ZIP Archive (30% to 95%)
                 let zipDest = tempDir.appendingPathComponent("stems.zip")
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
                 process.currentDirectoryURL = tempDir
                 process.arguments = ["-j", "-q", zipDest.path, vDest.path, dDest.path, bDest.path, oDest.path]
+                
                 try? process.run()
+                
+                // Active progression loop while zip executes
+                var zipProgress = 0.32
+                while process.isRunning {
+                    zipProgress = min(0.94, zipProgress + 0.04)
+                    let currentZipP = zipProgress
+                    await MainActor.run {
+                        self.exportState = .exporting(stage: "ZIPPING", percent: currentZipP)
+                        self.exportProgress = currentZipP
+                    }
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                }
                 process.waitUntilExit()
+                
+                // Stage 3: Finalizing (95% to 100%)
+                await MainActor.run {
+                    self.exportState = .exporting(stage: "SAVING", percent: 0.98)
+                    self.exportProgress = 0.98
+                }
                 
                 if FileManager.default.fileExists(atPath: zipDest.path) {
                     if FileManager.default.fileExists(atPath: targetURL.path) {
@@ -527,7 +534,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 }
                 try? FileManager.default.removeItem(at: tempDir)
                 
-                // Stage 6: Finalizing & Completed State (shows COMPLETED for 2.0 seconds)
+                // Stage 4: Completed Banner (2.0s)
                 await MainActor.run {
                     self.exportState = .completed
                     self.exportProgress = 1.0
