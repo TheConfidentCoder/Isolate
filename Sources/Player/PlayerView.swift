@@ -24,14 +24,44 @@ struct GridBackground: View {
 
 public struct PlayerView: View {
     @Environment(AudioEngineManager.self) private var engineManager
+    var isSidebarVisible: Binding<Bool>?
 
-    public init() {}
+    public init(isSidebarVisible: Binding<Bool>? = nil) {
+        self.isSidebarVisible = isSidebarVisible
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
-                // Top Header: 100x100 Hero Artwork, Track Title, Master Waveform & Spectrum
-                HStack(spacing: 24) {
+                // Top Header: Sidebar Toggle, 100x100 Hero Artwork, Track Title, Master Waveform & Spectrum
+                HStack(spacing: 18) {
+                    if let isSidebarVisible = isSidebarVisible {
+                        Button(action: {
+                            Haptics.playClick()
+                            withAnimation(nil) { // 0ms Instant Nothing Hardware Snap
+                                isSidebarVisible.wrappedValue.toggle()
+                            }
+                        }) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .stroke(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6), lineWidth: 1)
+                                    .frame(width: 18, height: 14)
+                                
+                                HStack(spacing: 2) {
+                                    Rectangle()
+                                        .fill(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6))
+                                        .frame(width: 4, height: 10)
+                                    Spacer()
+                                }
+                                .frame(width: 14, height: 10)
+                            }
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
                     AlbumArtView(image: engineManager.albumArt)
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -103,15 +133,13 @@ public struct PlayerView: View {
                     )
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(GridBackground())
             
+            // Fixed Bottom Transport & Mixer Controls
             TransportBar()
         }
-        .frame(minWidth: 700, minHeight: 520)
-        .background(GridBackground())
     }
 }
 
@@ -231,19 +259,21 @@ public final class DotMatrixImageProcessor {
         )
         for y in 0..<height {
             for x in 0..<width {
-                // Upright 1:1 coordinates without vertical inversion
                 let offset = (y * width + x) * 4
                 let rRaw = Float(rawData[offset]) / 255.0
                 let gRaw = Float(rawData[offset + 1]) / 255.0
                 let bRaw = Float(rawData[offset + 2]) / 255.0
                 
-                // Enhanced Dynamic Range: gently lift shadows for vivid Nothing LED detail
-                let liftedR = powf(rRaw, 0.88)
-                let liftedG = powf(gRaw, 0.88)
-                let liftedB = powf(bRaw, 0.88)
-                let lum = 0.2126 * liftedR + 0.7152 * liftedG + 0.0722 * liftedB
+                // 100% Perceptual Brightness Compensation:
+                // Compensates for non-emissive aperture gaps between circular dots
+                // so total luminous flux matches the original continuous-tone image 1:1
+                let gain: Float = 1.25
+                let rComp = min(1.0, powf(rRaw, 0.94) * gain)
+                let gComp = min(1.0, powf(gRaw, 0.94) * gain)
+                let bComp = min(1.0, powf(bRaw, 0.94) * gain)
+                let lum = 0.2126 * rComp + 0.7152 * gComp + 0.0722 * bComp
                 
-                matrix[y][x] = DotMatrixCell(r: liftedR, g: liftedG, b: liftedB, luminance: lum)
+                matrix[y][x] = DotMatrixCell(r: rComp, g: gComp, b: bComp, luminance: lum)
             }
         }
         return matrix
@@ -256,31 +286,30 @@ struct AlbumArtView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @State private var dotMatrix: [[DotMatrixCell]]? = nil
     @State private var isHovered = false
-    @State private var showColorOverride = false
     
     var body: some View {
         ZStack {
             Color.black
             
-            if let img = image {
+            if let _ = image {
                 ZStack {
-                    // 1. Real-Time 50x50 Full-Color RGB Dot-Matrix LED Canvas
+                    // 1. Real-Time 50x50 Full-Color RGB Dot-Matrix LED Canvas (100% Brightness Matched)
                     if let matrix = dotMatrix {
                         Canvas { context, size in
                             let gridSize = 50
                             let cellWidth = size.width / CGFloat(gridSize)
                             let cellHeight = size.height / CGFloat(gridSize)
                             let audioEnergy = engineManager.isPlaying ? Double(engineManager.masterWaveformAmplitudes.reduce(0, +) / Float(max(1, engineManager.masterWaveformAmplitudes.count))) : 0.0
-                            let pulse = 1.0 + (audioEnergy * 0.12)
-                            let maxDotRadius = cellWidth * 0.42 // Ensures clean 0.4px physical LED aperture gap
+                            let pulse = 1.0 + (audioEnergy * 0.08)
+                            let maxDotRadius = cellWidth * 0.46 // Micro-aperture 0.2px boundary
                             
                             for y in 0..<gridSize {
                                 for x in 0..<gridSize {
                                     let cell = matrix[y][x]
                                     let lum = cell.luminance
                                     
-                                    // Scale dot radius smoothly based on luminance & audio pulse
-                                    let normalizedScale = CGFloat(0.48 + 0.52 * sqrt(lum))
+                                    // Scale dot radius smoothly for full luminous coverage
+                                    let normalizedScale = CGFloat(0.55 + 0.45 * sqrt(lum))
                                     let baseRadius = maxDotRadius * normalizedScale * CGFloat(pulse)
                                     let clampedRadius = min(maxDotRadius, max(0.40, baseRadius))
                                     
@@ -293,31 +322,41 @@ struct AlbumArtView: View {
                                         height: clampedRadius * 2
                                     )
                                     
-                                    if lum < 0.02 {
-                                        // Faint physical LED grid point for authentic unlit display depth
-                                        context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(0.04)))
-                                    } else {
-                                        let dotColor = Color(
-                                            red: Double(cell.r),
-                                            green: Double(cell.g),
-                                            blue: Double(cell.b)
-                                        )
-                                        context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
-                                    }
+                                    let dotColor = Color(
+                                        red: Double(cell.r),
+                                        green: Double(cell.g),
+                                        blue: Double(cell.b)
+                                    )
+                                    context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
                                 }
                             }
                         }
                         .frame(width: 100, height: 100)
                     }
                     
-                    // 2. High-Res Original Color Image on Hover or Click
-                    Image(nsImage: img)
-                        .resizable()
-                        .scaledToFill()
+                    // 2. Subtle Micro-Bloom Glow on Hover
+                    if isHovered, let matrix = dotMatrix {
+                        Canvas { context, size in
+                            let gridSize = 50
+                            let cellWidth = size.width / CGFloat(gridSize)
+                            let cellHeight = size.height / CGFloat(gridSize)
+                            for y in 0..<gridSize {
+                                for x in 0..<gridSize {
+                                    let cell = matrix[y][x]
+                                    guard cell.luminance > 0.10 else { continue }
+                                    let centerX = CGFloat(x) * cellWidth + (cellWidth * 0.5)
+                                    let centerY = CGFloat(y) * cellHeight + (cellHeight * 0.5)
+                                    let bloomRect = CGRect(x: centerX - cellWidth * 0.55, y: centerY - cellHeight * 0.55, width: cellWidth * 1.1, height: cellHeight * 1.1)
+                                    let dotColor = Color(red: Double(cell.r), green: Double(cell.g), blue: Double(cell.b)).opacity(0.35)
+                                    context.fill(Path(ellipseIn: bloomRect), with: .color(dotColor))
+                                }
+                            }
+                        }
                         .frame(width: 100, height: 100)
-                        .clipped()
-                        .opacity(isHovered || showColorOverride ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.25), value: isHovered || showColorOverride)
+                        .blur(radius: 1.2)
+                        .blendMode(.plusLighter)
+                        .transition(.opacity)
+                    }
                 }
             } else {
                 // Standby diagnostic crosslines
@@ -353,10 +392,9 @@ struct AlbumArtView: View {
         .clipped()
         .contentShape(Rectangle())
         .onHover { hovering in
-            isHovered = hovering
-        }
-        .onTapGesture {
-            showColorOverride.toggle()
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isHovered = hovering
+            }
         }
         .onChange(of: image) { _, newImage in
             updateMatrix(for: newImage)

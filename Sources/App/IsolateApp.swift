@@ -167,12 +167,22 @@ struct ModalDotMatrixProgressBar: View {
 }
 
 struct ContentView: View {
+    @State private var isSidebarVisible = true
+    
     var body: some View {
-        NavigationSplitView {
-            LibraryView()
-                .navigationSplitViewColumnWidth(min: 250, ideal: 280)
-        } detail: {
-            PlayerView()
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                LibraryView()
+                    .frame(width: 270)
+                    .transition(.identity) // 0ms Instant Nothing Hardware Snap
+                
+                Divider()
+                    .background(Color.white.opacity(0.12))
+            }
+            
+            PlayerView(isSidebarVisible: $isSidebarVisible)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Color.black)
     }
 }
