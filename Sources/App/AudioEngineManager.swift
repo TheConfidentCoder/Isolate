@@ -610,11 +610,14 @@ public final class AudioEngineManager: @unchecked Sendable {
             Task { @MainActor in
                 self.playbackProgress = progress
                 
-                let mins = Int(elapsed) / 60
-                let secs = Int(elapsed) % 60
-                let rem = max(0, duration - elapsed)
-                let rMins = Int(rem) / 60
-                let rSecs = Int(rem) % 60
+                let totalDurationSecs = Int(round(duration))
+                let elapsedSecs = min(totalDurationSecs, Int(floor(elapsed)))
+                let remainingSecs = max(0, totalDurationSecs - elapsedSecs)
+                
+                let mins = elapsedSecs / 60
+                let secs = elapsedSecs % 60
+                let rMins = remainingSecs / 60
+                let rSecs = remainingSecs % 60
                 self.currentTimeString = String(format: "%02d:%02d / -%02d:%02d", mins, secs, rMins, rSecs)
             }
         }
@@ -624,13 +627,15 @@ public final class AudioEngineManager: @unchecked Sendable {
     public func updateTimeString(for progress: Double) {
         guard let file = audioFile else { return }
         let duration = Double(file.length) / file.processingFormat.sampleRate
-        let elapsed = duration * progress
+        guard duration > 0 else { return }
+        let totalDurationSecs = Int(round(duration))
+        let elapsedSecs = min(totalDurationSecs, Int(floor(duration * progress)))
+        let remainingSecs = max(0, totalDurationSecs - elapsedSecs)
         
-        let mins = Int(elapsed) / 60
-        let secs = Int(elapsed) % 60
-        let rem = max(0, duration - elapsed)
-        let rMins = Int(rem) / 60
-        let rSecs = Int(rem) % 60
+        let mins = elapsedSecs / 60
+        let secs = elapsedSecs % 60
+        let rMins = remainingSecs / 60
+        let rSecs = remainingSecs % 60
         currentTimeString = String(format: "%02d:%02d / -%02d:%02d", mins, secs, rMins, rSecs)
     }
     

@@ -16,7 +16,7 @@ struct GridBackground: View {
                         path.addLine(to: CGPoint(x: geometry.size.width, y: y))
                     }
                 }
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                .stroke(Color.white.opacity(0.04), lineWidth: 1)
             }
         }
     }
@@ -29,13 +29,13 @@ public struct PlayerView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            VStack {
-                // Top Header: Album Art, Track Title, Master Waveform & Spectrum
-                HStack(spacing: 20) {
+            VStack(spacing: 16) {
+                // Top Header: 100x100 Hero Artwork, Track Title, Master Waveform & Spectrum
+                HStack(spacing: 24) {
                     AlbumArtView(image: engineManager.albumArt)
                     
-                    VStack(alignment: .leading, spacing: 6) {
-                        MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: 24))
+                    VStack(alignment: .leading, spacing: 8) {
+                        MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: 26))
                             .foregroundColor(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
@@ -44,15 +44,21 @@ public struct PlayerView: View {
                                 .font(.custom("DotGothic16-Regular", size: 12))
                                 .foregroundColor(engineManager.isBypassed ? .yellow : .gray)
                             
-                            Circle()
-                                .fill(engineManager.isPlaying ? Color.red : Color.gray)
-                                .frame(width: 6, height: 6)
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(engineManager.isPlaying ? Color.red : Color.gray)
+                                    .frame(width: 6, height: 6)
+                                
+                                Text(engineManager.isPlaying ? "ACTIVE" : "STANDBY")
+                                    .font(.custom("DotGothic16-Regular", size: 11))
+                                    .foregroundColor(engineManager.isPlaying ? .red : .gray)
+                            }
                         }
                     }
                     
                     Spacer(minLength: 20)
                     
-                    VStack(alignment: .trailing, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: 6) {
                         RealWaveformView(
                             amplitudes: engineManager.masterWaveformAmplitudes,
                             ghostAmplitudes: engineManager.originalWaveformAmplitudes
@@ -60,10 +66,12 @@ public struct PlayerView: View {
                         EQSpectrumView(magnitudes: engineManager.masterEQMagnitudes)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 8)
                 
-                // 4 Stem Mixer Channels
-                HStack(spacing: 24) {
+                // 4 Fluid Adaptive Stem Mixer Channels
+                HStack(spacing: 18) {
                     @Bindable var engine = engineManager
                     StemChannelView(
                         title: "VOCALS",
@@ -94,14 +102,15 @@ public struct PlayerView: View {
                         eqMagnitudes: engine.otherEQMagnitudes
                     )
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
             TransportBar()
         }
-        .frame(minWidth: 720, minHeight: 520)
+        .frame(minWidth: 700, minHeight: 520)
         .background(GridBackground())
     }
 }
@@ -128,6 +137,7 @@ struct StemChannelView: View {
                 .foregroundColor(.gray)
             
             CustomFader(value: $volume, label: title)
+                .frame(maxHeight: .infinity)
             
             HStack(spacing: 8) {
                 Button("M") {
@@ -135,9 +145,9 @@ struct StemChannelView: View {
                     isMuted.toggle()
                 }
                 .font(.custom("DotGothic16-Regular", size: 13))
-                .frame(width: 32, height: 28)
+                .frame(width: 34, height: 30)
                 .background(isMuted ? Color.red : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.6), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.5), lineWidth: 1))
                 .foregroundColor(isMuted ? .black : .white)
                 .buttonStyle(.plain)
                 
@@ -146,17 +156,17 @@ struct StemChannelView: View {
                     isSoloed.toggle()
                 }
                 .font(.custom("DotGothic16-Regular", size: 13))
-                .frame(width: 32, height: 28)
+                .frame(width: 34, height: 30)
                 .background(isSoloed ? Color.red : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.6), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.5), lineWidth: 1))
                 .foregroundColor(isSoloed ? .black : .white)
                 .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 16)
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity)
-        .background(Color.black.opacity(0.45))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.5))
         .border(Color.white.opacity(0.1), width: 1)
     }
 }
@@ -184,31 +194,86 @@ struct StemMiniEQView: View {
     }
 }
 
+// MARK: - Hero 100x100 Album Art View with Nothing Hardware Bezel
 struct AlbumArtView: View {
     let image: NSImage?
     
     var body: some View {
-        Group {
+        ZStack {
+            Color.black
+            
             if let img = image {
                 Image(nsImage: img)
                     .resizable()
                     .scaledToFill()
+                    .frame(width: 100, height: 100)
+                    .clipped()
             } else {
                 ZStack {
                     Color.black
-                    Rectangle().stroke(Color.red, lineWidth: 2)
+                    // Dotted background grid
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    
+                    // Standby diagnostic crosslines
                     Path { path in
                         path.move(to: CGPoint(x: 0, y: 0))
-                        path.addLine(to: CGPoint(x: 64, y: 64))
-                        path.move(to: CGPoint(x: 64, y: 0))
-                        path.addLine(to: CGPoint(x: 0, y: 64))
+                        path.addLine(to: CGPoint(x: 100, y: 100))
+                        path.move(to: CGPoint(x: 100, y: 0))
+                        path.addLine(to: CGPoint(x: 0, y: 100))
                     }
-                    .stroke(Color.red, lineWidth: 1)
+                    .stroke(Color.red.opacity(0.5), lineWidth: 1)
+                    
+                    Text("NO ARTWORK")
+                        .font(.custom("DotGothic16-Regular", size: 10))
+                        .foregroundColor(.red.opacity(0.85))
+                        .padding(4)
+                        .background(Color.black)
                 }
             }
+            
+            // Outer Hardware Border
+            Rectangle()
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            
+            // Red Corner Accents (Nothing Hardware Style)
+            CornerBrackets()
         }
-        .frame(width: 64, height: 64)
+        .frame(width: 100, height: 100)
         .clipped()
+    }
+}
+
+struct CornerBrackets: View {
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let len: CGFloat = 8.0
+            
+            Path { p in
+                // Top-Left
+                p.move(to: CGPoint(x: 0, y: len))
+                p.addLine(to: CGPoint(x: 0, y: 0))
+                p.addLine(to: CGPoint(x: len, y: 0))
+                
+                // Top-Right
+                p.move(to: CGPoint(x: w - len, y: 0))
+                p.addLine(to: CGPoint(x: w, y: 0))
+                p.addLine(to: CGPoint(x: w, y: len))
+                
+                // Bottom-Left
+                p.move(to: CGPoint(x: 0, y: h - len))
+                p.addLine(to: CGPoint(x: 0, y: h))
+                p.addLine(to: CGPoint(x: len, y: h))
+                
+                // Bottom-Right
+                p.move(to: CGPoint(x: w - len, y: h))
+                p.addLine(to: CGPoint(x: w, y: h))
+                p.addLine(to: CGPoint(x: w, y: h - len))
+            }
+            .stroke(Color.red, lineWidth: 2)
+        }
     }
 }
 
@@ -314,7 +379,7 @@ struct TransportBar: View {
     
     var body: some View {
         HStack(spacing: 16) {
-            // Instantaneous Synchronized Time String
+            // Synchronized Single-Clock Time String (0ms offset)
             Text(engineManager.currentTimeString)
                 .font(.custom("DotGothic16-Regular", size: 16))
                 .foregroundColor(.red)

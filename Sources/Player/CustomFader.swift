@@ -44,6 +44,6 @@ struct CustomFader: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(height: 200)
+        .frame(minHeight: 160, maxHeight: .infinity)
     }
 }
