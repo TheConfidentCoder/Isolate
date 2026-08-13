@@ -53,6 +53,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/Isolate-*.dmg
+            dist/Isolate-*.pkg
             dist/Isolate-*.zip
             dist/SHA256SUMS.txt
         env:

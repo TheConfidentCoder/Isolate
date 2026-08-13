@@ -22,24 +22,41 @@
 
 ## [ 02. INSTALLATION ]
 
-### Option A: Pre-Built DMG (Recommended)
+### Option A: Instant 1-Line Install (Zero Prompts • Recommended)
 
-1. Download the latest **`Isolate-v1.0.0.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases).
-2. Double-click the `.dmg` installer.
-3. Drag the **`Isolate.app`** icon into the **`Applications`** folder.
-4. Double-click **`Open Isolate (First Run)`** in the DMG (or right-click `Isolate.app` in `/Applications` $\to$ **Open**).
-
-> [!NOTE]  
-> **One-Time macOS Gatekeeper Notice**  
-> Because Isolate is free, open-source software, macOS attaches a security quarantine flag on downloaded internet binaries.
-> - **Easiest**: Double-click **`Open Isolate (First Run)`** inside the DMG to unquarantine and launch in 1 click.
-> - **Alternative**: Right-click `Isolate.app` in `/Applications` and select **Open**.
-> - **Terminal**: `xattr -cr /Applications/Isolate.app`
-> *(Once installed to Applications via the in-app mover, quarantine is automatically stripped and you will never see this prompt again).*
+Run in Terminal to install directly to `/Applications` with automatic quarantine removal:
+```bash
+curl -fsSL https://raw.githubusercontent.com/TheConfidentCoder/Isolate/main/install.sh | bash
+```
 
 ---
 
-### Option B: Build from Source
+### Option B: Pre-Built DMG / PKG Installer
+
+1. Download **`Isolate-v1.0.0.dmg`** or **`Isolate-v1.0.0.pkg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
+2. For DMG: Drag **`Isolate.app`** to **`Applications`**, then launch.
+3. For PKG: Run the installer package wizard.
+
+> [!NOTE]  
+> **macOS Gatekeeper First-Launch Quick Fix**  
+> If macOS says *"Apple could not verify Isolate.app is free of malware"*:
+> - **1-Second Terminal Command**:
+>   ```bash
+>   xattr -cr /Applications/Isolate.app
+>   ```
+> - **Or System Settings**: Click **Done** $\to$ Open **System Settings** $\to$ **Privacy & Security** $\to$ Click **Open Anyway** under *Security*.
+>
+> 📖 See detailed instructions in [**`INSTALL.md`**](INSTALL.md) and [**`TROUBLESHOOTING.md`**](TROUBLESHOOTING.md).
+
+---
+
+### Option C: Homebrew Cask
+
+```bash
+brew install --cask TheConfidentCoder/isolate/isolate
+```
+
+### Option D: Build from Source
 
 #### Prerequisites
 - macOS 14.0 (Sonoma) or newer
