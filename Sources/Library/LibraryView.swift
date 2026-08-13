@@ -110,9 +110,16 @@ struct LibraryView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if activeMenuTrackID != nil {
+                            activeMenuTrackID = nil
+                        }
+                    }
                 }
             }
             .background(Color.black.opacity(0.85))
+            .contentShape(Rectangle())
             .onTapGesture {
                 if activeMenuTrackID != nil {
                     activeMenuTrackID = nil

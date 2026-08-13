@@ -245,19 +245,18 @@ struct ContentView: View {
             
             PlayerView(isSidebarVisible: $isSidebarVisible)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    // Tap anywhere in PlayerView to dismiss active 3-dots library menu
+                    if activeMenuTrackID != nil {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                activeMenuTrackID = nil
+                            }
+                    }
+                }
         }
         .background(Color.black)
-        .overlay {
-            // Global Tap-to-Dismiss for 3-Dots Dropdown Menu
-            if activeMenuTrackID != nil {
-                Color.black.opacity(0.001)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        activeMenuTrackID = nil
-                    }
-            }
-        }
         .overlay {
             // MARK: - Window-Centered Nothing-Style Rename Modal
             if isShowingRenameModal, let track = trackToRename {
