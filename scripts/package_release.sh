@@ -36,14 +36,18 @@ xcodebuild -scheme Isolate \
 
 APP_BUNDLE="$BUILD_DIR/Isolate.app"
 
-# 4. Embed CoreML Model into App Bundle Resources
-echo "🧠 Step 3/6: Embedding Demucs Neural Engine CoreML model..."
+# 4. Embed CoreML Model & AppIcon into App Bundle Resources
+echo "🧠 Step 3/6: Embedding Demucs Neural Engine CoreML model & AppIcon..."
 MODEL_SOURCE="/Users/neokumar/Library/Application Support/Isolate/HTDemucs.mlmodelc"
 if [ -d "$MODEL_SOURCE" ]; then
     cp -R "$MODEL_SOURCE" "$APP_BUNDLE/Contents/Resources/HTDemucs.mlmodelc"
     echo "   Embedded HTDemucs.mlmodelc (~287MB) into app bundle."
 else
     echo "⚠️ Warning: $MODEL_SOURCE not found locally."
+fi
+if [ -f "$PROJECT_DIR/Assets/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/Assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "   Embedded AppIcon.icns into app bundle resources."
 fi
 
 # 5. Ad-Hoc Code Sign the App Bundle
@@ -80,18 +84,18 @@ tell application "Finder"
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set the bounds of container window to {200, 150, 860, 570}
+        set the bounds of container window to {200, 120, 860, 560}
         
         set theViewOptions to the icon view options of container window
         set arrangement of theViewOptions to not arranged
         set icon size of theViewOptions to 110
         set background picture of theViewOptions to file ".background:dmg_background.png"
         
-        set position of item "Isolate.app" of container window to {160, 200}
-        set position of item "Applications" of container window to {500, 200}
+        set position of item "Isolate.app" of container window to {165, 195}
+        set position of item "Applications" of container window to {495, 195}
         
         update without registering applications
-        delay 1
+        delay 2
         close
     end tell
 end tell

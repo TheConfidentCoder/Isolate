@@ -2,7 +2,7 @@ import Cocoa
 
 func createDMGBackground() {
     let width: CGFloat = 660
-    let height: CGFloat = 420
+    let height: CGFloat = 440
     let scale: CGFloat = 2.0
     let size = NSSize(width: width * scale, height: height * scale)
     
@@ -17,82 +17,92 @@ func createDMGBackground() {
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     
     // Dot Matrix Pattern
-    context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.04))
-    for x in stride(from: 20.0, through: width - 20.0, by: 16.0) {
-        for y in stride(from: 20.0, through: height - 20.0, by: 16.0) {
+    context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.05))
+    for x in stride(from: 18.0, through: width - 18.0, by: 16.0) {
+        for y in stride(from: 18.0, through: height - 18.0, by: 16.0) {
             context.fill(CGRect(x: x, y: y, width: 2, height: 2))
         }
     }
     
     // Outer Subtle Border
-    context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.12))
+    context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.15))
     context.setLineWidth(1.0)
-    context.stroke(CGRect(x: 20, y: 20, width: width - 40, height: height - 40))
+    context.stroke(CGRect(x: 18, y: 18, width: width - 36, height: height - 36))
     
     // Red Corner Brackets
-    let bracketLen: CGFloat = 16.0
-    context.setStrokeColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 0.9))
-    context.setLineWidth(2.0)
+    let bracketLen: CGFloat = 20.0
+    context.setStrokeColor(CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0))
+    context.setLineWidth(2.5)
     
     // Bottom-Left
     context.strokeLineSegments(between: [
-        CGPoint(x: 18, y: 18 + bracketLen), CGPoint(x: 18, y: 18),
-        CGPoint(x: 18, y: 18), CGPoint(x: 18 + bracketLen, y: 18)
+        CGPoint(x: 16, y: 16 + bracketLen), CGPoint(x: 16, y: 16),
+        CGPoint(x: 16, y: 16), CGPoint(x: 16 + bracketLen, y: 16)
     ])
     // Bottom-Right
     context.strokeLineSegments(between: [
-        CGPoint(x: width - 18 - bracketLen, y: 18), CGPoint(x: width - 18, y: 18),
-        CGPoint(x: width - 18, y: 18), CGPoint(x: width - 18, y: 18 + bracketLen)
+        CGPoint(x: width - 16 - bracketLen, y: 16), CGPoint(x: width - 16, y: 16),
+        CGPoint(x: width - 16, y: 16), CGPoint(x: width - 16, y: 16 + bracketLen)
     ])
     // Top-Left
     context.strokeLineSegments(between: [
-        CGPoint(x: 18, y: height - 18 - bracketLen), CGPoint(x: 18, y: height - 18),
-        CGPoint(x: 18, y: height - 18), CGPoint(x: 18 + bracketLen, y: height - 18)
+        CGPoint(x: 16, y: height - 16 - bracketLen), CGPoint(x: 16, y: height - 16),
+        CGPoint(x: 16, y: height - 16), CGPoint(x: 16 + bracketLen, y: height - 16)
     ])
     // Top-Right
     context.strokeLineSegments(between: [
-        CGPoint(x: width - 18 - bracketLen, y: height - 18), CGPoint(x: width - 18, y: height - 18),
-        CGPoint(x: width - 18, y: height - 18), CGPoint(x: width - 18, y: height - 18 - bracketLen)
+        CGPoint(x: width - 16 - bracketLen, y: height - 16), CGPoint(x: width - 16, y: height - 16),
+        CGPoint(x: width - 16, y: height - 16), CGPoint(x: width - 16, y: height - 16 - bracketLen)
     ])
     
-    // Center Hardware Directional Arrow (Y inverted in CG: 210 is center)
-    let centerY: CGFloat = 200
-    context.setStrokeColor(CGColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 0.85))
-    context.setLineWidth(2.5)
+    // Coordinate Mapping:
+    // In Finder (top-down, height=440):
+    // Isolate.app icon is at (165, 195).
+    // Applications icon is at (495, 195).
+    // In AppKit (bottom-up): Y_appkit = 440 - Y_finder = 245.
+    let iconCenterY: CGFloat = 245.0
+    let leftCenterX: CGFloat = 165.0
+    let rightCenterX: CGFloat = 495.0
+    
+    // Left Slot Drop-Target Box for Isolate.app
+    context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.22))
+    context.setLineWidth(1.2)
+    let boxW: CGFloat = 140
+    let boxH: CGFloat = 160
+    let leftBox = CGRect(x: leftCenterX - boxW / 2, y: iconCenterY - boxH / 2 - 8, width: boxW, height: boxH)
+    let leftPath = CGPath(roundedRect: leftBox, cornerWidth: 14, cornerHeight: 14, transform: nil)
+    context.addPath(leftPath)
+    context.strokePath()
+    
+    // Right Slot Drop-Target Box for Applications
+    let rightBox = CGRect(x: rightCenterX - boxW / 2, y: iconCenterY - boxH / 2 - 8, width: boxW, height: boxH)
+    let rightPath = CGPath(roundedRect: rightBox, cornerWidth: 14, cornerHeight: 14, transform: nil)
+    context.addPath(rightPath)
+    context.strokePath()
+    
+    // Center Hardware Directional Arrow
+    context.setStrokeColor(CGColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 0.9))
+    context.setLineWidth(3.0)
     context.setLineDash(phase: 0, lengths: [6, 4])
     context.strokeLineSegments(between: [
-        CGPoint(x: 250, y: centerY), CGPoint(x: 390, y: centerY)
+        CGPoint(x: 250, y: iconCenterY), CGPoint(x: 395, y: iconCenterY)
     ])
     context.setLineDash(phase: 0, lengths: []) // reset
     
     // Arrow Head
-    context.setFillColor(CGColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 0.95))
+    context.setFillColor(CGColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 1.0))
     let arrowPath = CGMutablePath()
-    arrowPath.move(to: CGPoint(x: 402, y: centerY))
-    arrowPath.addLine(to: CGPoint(x: 388, y: centerY + 8))
-    arrowPath.addLine(to: CGPoint(x: 388, y: centerY - 8))
+    arrowPath.move(to: CGPoint(x: 410, y: iconCenterY))
+    arrowPath.addLine(to: CGPoint(x: 394, y: iconCenterY + 9))
+    arrowPath.addLine(to: CGPoint(x: 394, y: iconCenterY - 9))
     arrowPath.closeSubpath()
     context.addPath(arrowPath)
     context.fillPath()
     
-    // Left Slot Target Box (Isolate.app at x: 160)
-    context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.18))
-    context.setLineWidth(1.0)
-    let leftBox = CGRect(x: 100, y: 120, width: 120, height: 160)
-    let leftPath = CGPath(roundedRect: leftBox, cornerWidth: 12, cornerHeight: 12, transform: nil)
-    context.addPath(leftPath)
-    context.strokePath()
-    
-    // Right Slot Target Box (/Applications at x: 500)
-    let rightBox = CGRect(x: 440, y: 120, width: 120, height: 160)
-    let rightPath = CGPath(roundedRect: rightBox, cornerWidth: 12, cornerHeight: 12, transform: nil)
-    context.addPath(rightPath)
-    context.strokePath()
-    
     // Typography
     let fontName = "Courier-Bold"
-    let headerFont = NSFont(name: fontName, size: 11) ?? NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
-    let titleFont = NSFont(name: fontName, size: 16) ?? NSFont.monospacedSystemFont(ofSize: 16, weight: .bold)
+    let headerFont = NSFont(name: fontName, size: 12) ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+    let titleFont = NSFont(name: fontName, size: 18) ?? NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
     let telemetryFont = NSFont(name: fontName, size: 10) ?? NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
     
     // App Title Top
@@ -101,35 +111,34 @@ func createDMGBackground() {
         .foregroundColor: NSColor.white
     ]
     let titleStr = NSAttributedString(string: "ISOLATE INSTALLER", attributes: titleAttr)
-    titleStr.draw(at: NSPoint(x: (width - titleStr.size().width) / 2, y: height - 52))
+    titleStr.draw(at: NSPoint(x: (width - titleStr.size().width) / 2, y: height - 56))
     
     // Action Label Center
     let actionAttr: [NSAttributedString.Key: Any] = [
         .font: headerFont,
-        .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.3, blue: 0.3, alpha: 1.0)
+        .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.25, blue: 0.25, alpha: 1.0)
     ]
     let actionStr = NSAttributedString(string: "[ DRAG TO INSTALL ]", attributes: actionAttr)
-    actionStr.draw(at: NSPoint(x: (width - actionStr.size().width) / 2, y: centerY + 18))
+    actionStr.draw(at: NSPoint(x: (width - actionStr.size().width) / 2, y: iconCenterY + 20))
     
-    // Left Label
-    let leftAttr: [NSAttributedString.Key: Any] = [
+    // Target Box Labels
+    let boxLabelAttr: [NSAttributedString.Key: Any] = [
         .font: headerFont,
         .foregroundColor: NSColor.lightGray
     ]
-    let leftStr = NSAttributedString(string: "ISOLATE.APP", attributes: leftAttr)
-    leftStr.draw(at: NSPoint(x: 160 - leftStr.size().width / 2, y: 92))
+    let leftStr = NSAttributedString(string: "ISOLATE.APP", attributes: boxLabelAttr)
+    leftStr.draw(at: NSPoint(x: leftCenterX - leftStr.size().width / 2, y: leftBox.minY - 26))
     
-    // Right Label
-    let rightStr = NSAttributedString(string: "APPLICATIONS", attributes: leftAttr)
-    rightStr.draw(at: NSPoint(x: 500 - rightStr.size().width / 2, y: 92))
+    let rightStr = NSAttributedString(string: "APPLICATIONS", attributes: boxLabelAttr)
+    rightStr.draw(at: NSPoint(x: rightCenterX - rightStr.size().width / 2, y: rightBox.minY - 26))
     
     // Bottom Telemetry
     let footAttr: [NSAttributedString.Key: Any] = [
         .font: telemetryFont,
-        .foregroundColor: NSColor(calibratedWhite: 0.5, alpha: 1.0)
+        .foregroundColor: NSColor(calibratedWhite: 0.55, alpha: 1.0)
     ]
     let footStr = NSAttributedString(string: "DEMUCS V4 COREML • APPLE SILICON NEURAL ENGINE ACCELERATED", attributes: footAttr)
-    footStr.draw(at: NSPoint(x: (width - footStr.size().width) / 2, y: 32))
+    footStr.draw(at: NSPoint(x: (width - footStr.size().width) / 2, y: 30))
     
     image.unlockFocus()
     
@@ -145,11 +154,25 @@ func createDMGBackground() {
 }
 
 func createAppIcon() {
-    let sizes = [16, 32, 64, 128, 256, 512, 1024]
+    let iconSpecs: [(name: String, pixelSize: Int)] = [
+        ("icon_16x16.png", 16),
+        ("icon_16x16@2x.png", 32),
+        ("icon_32x32.png", 32),
+        ("icon_32x32@2x.png", 64),
+        ("icon_128x128.png", 128),
+        ("icon_128x128@2x.png", 256),
+        ("icon_256x256.png", 256),
+        ("icon_256x256@2x.png", 512),
+        ("icon_512x512.png", 512),
+        ("icon_512x512@2x.png", 1024)
+    ]
+    
     let iconsetDir = URL(fileURLWithPath: "Assets/AppIcon.iconset")
+    try? FileManager.default.removeItem(at: iconsetDir)
     try? FileManager.default.createDirectory(at: iconsetDir, withIntermediateDirectories: true)
     
-    for s in sizes {
+    for spec in iconSpecs {
+        let s = CGFloat(spec.pixelSize)
         let size = NSSize(width: s, height: s)
         let img = NSImage(size: size)
         img.lockFocus()
@@ -158,70 +181,67 @@ func createAppIcon() {
         let bounds = CGRect(x: 0, y: 0, width: s, height: s)
         
         // Dark Rounded Squircle Bezel
-        let corner = CGFloat(s) * 0.22
+        let corner = s * 0.2237 // Apple standard macOS squircle proportion
         let path = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
         ctx.addPath(path)
-        ctx.setFillColor(CGColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1.0))
+        ctx.setFillColor(CGColor(red: 0.04, green: 0.04, blue: 0.04, alpha: 1.0))
         ctx.fillPath()
         
-        // Border
+        // Subtle Inner Bezel Border
         ctx.addPath(path)
         ctx.setStrokeColor(CGColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1.0))
-        ctx.setLineWidth(max(1.0, CGFloat(s) * 0.015))
+        ctx.setLineWidth(max(1.0, s * 0.015))
         ctx.strokePath()
         
         // Center Hardware Graphic: 4 Isolated Stem Bars (Vocals, Drums, Bass, Other)
-        let barWidth = max(2.0, CGFloat(s) * 0.08)
-        let barSpacing = max(2.0, CGFloat(s) * 0.06)
-        let heights: [CGFloat] = [0.45, 0.75, 0.9, 0.55]
+        let barWidth = max(2.0, s * 0.085)
+        let barSpacing = max(2.0, s * 0.055)
+        let heights: [CGFloat] = [0.45, 0.78, 0.92, 0.58]
         let totalW = CGFloat(heights.count) * barWidth + CGFloat(heights.count - 1) * barSpacing
-        let startX = (CGFloat(s) - totalW) / 2.0
-        let maxHeight = CGFloat(s) * 0.45
-        let startY = (CGFloat(s) - maxHeight) / 2.0
+        let startX = (s - totalW) / 2.0
+        let maxHeight = s * 0.46
+        let startY = (s - maxHeight) / 2.0
         
         for (i, hFactor) in heights.enumerated() {
             let x = startX + CGFloat(i) * (barWidth + barSpacing)
             let h = maxHeight * hFactor
             let y = startY + (maxHeight - h) / 2.0
             
-            // Vocals (Red), others White/Gray
-            let color = (i == 1 || i == 2) ? CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0) : CGColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
+            // Vocals & Drums (Red), Bass & Other (White/Light Gray)
+            let color = (i == 1 || i == 2) ? CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0) : CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
             ctx.setFillColor(color)
             let barRect = CGRect(x: x, y: y, width: barWidth, height: h)
-            let barPath = CGPath(roundedRect: barRect, cornerWidth: barWidth * 0.4, cornerHeight: barWidth * 0.4, transform: nil)
+            let barPath = CGPath(roundedRect: barRect, cornerWidth: barWidth * 0.35, cornerHeight: barWidth * 0.35, transform: nil)
             ctx.addPath(barPath)
             ctx.fillPath()
         }
         
         // Red corner LED dot
-        let dotSize = max(3.0, CGFloat(s) * 0.06)
+        let dotSize = max(3.0, s * 0.065)
         ctx.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 1.0))
-        ctx.fillEllipse(in: CGRect(x: CGFloat(s) - corner - dotSize, y: CGFloat(s) - corner - dotSize, width: dotSize, height: dotSize))
+        ctx.fillEllipse(in: CGRect(x: s - corner - dotSize, y: s - corner - dotSize, width: dotSize, height: dotSize))
         
         img.unlockFocus()
         
         if let tiffData = img.tiffRepresentation,
            let rep = NSBitmapImageRep(data: tiffData),
            let png = rep.representation(using: .png, properties: [:]) {
-            let filename = "icon_\(s)x\(s).png"
-            try? png.write(to: iconsetDir.appendingPathComponent(filename))
-            if s <= 512 {
-                let filename2x = "icon_\(s)x\(s)@2x.png"
-                // For @2x, write next size or same
-            }
+            let outURL = iconsetDir.appendingPathComponent(spec.name)
+            try? png.write(to: outURL)
         }
     }
     
-    // Generate .icns using iconutil
+    // Generate AppIcon.icns using iconutil
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
     proc.arguments = ["-c", "icns", "Assets/AppIcon.iconset", "-o", "Assets/AppIcon.icns"]
     try? proc.run()
     proc.waitUntilExit()
     
-    // Copy to Sources/Resources
+    // Copy to Sources/Resources/AppIcon.icns
+    try? FileManager.default.removeItem(atPath: "Sources/Resources/AppIcon.icns")
     try? FileManager.default.copyItem(atPath: "Assets/AppIcon.icns", toPath: "Sources/Resources/AppIcon.icns")
-    print("Generated AppIcon.icns")
+    print("Generated complete multi-resolution AppIcon.icns")
 }
 
 createDMGBackground()
