@@ -194,9 +194,16 @@ struct StemMiniEQView: View {
     }
 }
 
-// MARK: - Nothing 50x50 Real-Time Dot-Matrix Processor
+// MARK: - Nothing 50x50 Real-Time RGB Color Dot-Matrix Processor
+public struct DotMatrixCell: Sendable {
+    public let r: Float
+    public let g: Float
+    public let b: Float
+    public let luminance: Float
+}
+
 public final class DotMatrixImageProcessor {
-    public static func generateDotMatrix(from image: NSImage, gridSize: Int = 50) -> [[Float]]? {
+    public static func generateColorDotMatrix(from image: NSImage, gridSize: Int = 50) -> [[DotMatrixCell]]? {
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let cgImage = bitmap.cgImage else { return nil }
@@ -218,7 +225,10 @@ public final class DotMatrixImageProcessor {
         context.interpolationQuality = .high
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         
-        var matrix = [[Float]](repeating: [Float](repeating: 0, count: width), count: height)
+        var matrix = [[DotMatrixCell]](
+            repeating: [DotMatrixCell](repeating: DotMatrixCell(r: 0, g: 0, b: 0, luminance: 0), count: width),
+            count: height
+        )
         for y in 0..<height {
             for x in 0..<width {
                 let imgY = (height - 1) - y
@@ -227,19 +237,18 @@ public final class DotMatrixImageProcessor {
                 let g = Float(rawData[offset + 1]) / 255.0
                 let b = Float(rawData[offset + 2]) / 255.0
                 let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                let contrastBoosted = powf(lum, 1.2)
-                matrix[y][x] = min(max(contrastBoosted, 0.0), 1.0)
+                matrix[y][x] = DotMatrixCell(r: r, g: g, b: b, luminance: lum)
             }
         }
         return matrix
     }
 }
 
-// MARK: - Hero 100x100 Album Art View with Nothing Dot-Matrix LED Screen
+// MARK: - Hero 100x100 Album Art View with Full-Color Nothing Dot-Matrix LED Screen
 struct AlbumArtView: View {
     let image: NSImage?
     @Environment(AudioEngineManager.self) private var engineManager
-    @State private var dotMatrix: [[Float]]? = nil
+    @State private var dotMatrix: [[DotMatrixCell]]? = nil
     @State private var isHovered = false
     @State private var showColorOverride = false
     
@@ -249,7 +258,7 @@ struct AlbumArtView: View {
             
             if let img = image {
                 ZStack {
-                    // 1. Real-Time 50x50 Nothing Dot-Matrix LED Canvas
+                    // 1. Real-Time 50x50 Full-Color RGB Dot-Matrix LED Canvas
                     if let matrix = dotMatrix {
                         Canvas { context, size in
                             let gridSize = 50
@@ -260,9 +269,11 @@ struct AlbumArtView: View {
                             
                             for y in 0..<gridSize {
                                 for x in 0..<gridSize {
-                                    let lum = matrix[y][x]
+                                    let cell = matrix[y][x]
+                                    let lum = cell.luminance
+                                    
                                     guard lum > 0.02 else {
-                                        // Draw faint unlit LED cell for authentic hardware display depth
+                                        // Draw faint unlit LED cell for physical display depth
                                         let dotRect = CGRect(
                                             x: CGFloat(x) * cellWidth + cellWidth * 0.35,
                                             y: CGFloat(y) * cellHeight + cellHeight * 0.35,
@@ -273,8 +284,10 @@ struct AlbumArtView: View {
                                         continue
                                     }
                                     
-                                    let baseRadius = (cellWidth * 0.46) * CGFloat(lum) * CGFloat(pulse)
-                                    let clampedRadius = min(cellWidth * 0.48, max(0.35, baseRadius))
+                                    // Scale dot radius smoothly based on luminance & audio pulse
+                                    let normalizedScale = CGFloat(0.40 + 0.60 * sqrt(lum))
+                                    let baseRadius = (cellWidth * 0.44) * normalizedScale * CGFloat(pulse)
+                                    let clampedRadius = min(cellWidth * 0.48, max(0.4, baseRadius))
                                     
                                     let centerX = CGFloat(x) * cellWidth + (cellWidth * 0.5)
                                     let centerY = CGFloat(y) * cellHeight + (cellHeight * 0.5)
@@ -285,8 +298,12 @@ struct AlbumArtView: View {
                                         height: clampedRadius * 2
                                     )
                                     
-                                    let opacity = min(1.0, 0.22 + Double(lum) * 0.78)
-                                    context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(opacity)))
+                                    let dotColor = Color(
+                                        red: Double(cell.r),
+                                        green: Double(cell.g),
+                                        blue: Double(cell.b)
+                                    )
+                                    context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
                                 }
                             }
                         }
@@ -331,24 +348,6 @@ struct AlbumArtView: View {
             
             // Red Corner Accents (Nothing Hardware Style)
             CornerBrackets()
-            
-            // Glyph status badge in bottom-right
-            if image != nil {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Text(isHovered || showColorOverride ? "NATURAL" : "DOT MATRIX")
-                            .font(.custom("DotGothic16-Regular", size: 8))
-                            .foregroundColor(isHovered || showColorOverride ? .black : .red)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(isHovered || showColorOverride ? Color.white.opacity(0.9) : Color.black.opacity(0.8))
-                            .border(isHovered || showColorOverride ? Color.white : Color.red.opacity(0.6), width: 0.5)
-                            .padding(4)
-                    }
-                }
-            }
         }
         .frame(width: 100, height: 100)
         .clipped()
@@ -373,7 +372,7 @@ struct AlbumArtView: View {
             return
         }
         Task.detached(priority: .userInitiated) {
-            let matrix = DotMatrixImageProcessor.generateDotMatrix(from: img, gridSize: 50)
+            let matrix = DotMatrixImageProcessor.generateColorDotMatrix(from: img, gridSize: 50)
             await MainActor.run {
                 self.dotMatrix = matrix
             }

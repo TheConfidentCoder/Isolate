@@ -176,24 +176,25 @@ final class IsolateTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempDir)
     }
     
-    // Test 6: Verify 50x50 Nothing Dot-Matrix Image Sampling
+    // Test 6: Verify 50x50 Nothing RGB Color Dot-Matrix Image Sampling
     func testDotMatrixImageProcessorSampling() {
         let size = NSSize(width: 200, height: 200)
         let image = NSImage(size: size)
         image.lockFocus()
-        NSColor.white.setFill()
+        NSColor.red.setFill()
         NSRect(origin: .zero, size: size).fill()
-        NSColor.black.setFill()
+        NSColor.blue.setFill()
         NSRect(x: 50, y: 50, width: 100, height: 100).fill()
         image.unlockFocus()
         
-        let matrix = DotMatrixImageProcessor.generateDotMatrix(from: image, gridSize: 50)
-        XCTAssertNotNil(matrix, "Dot matrix generation must succeed")
+        let matrix = DotMatrixImageProcessor.generateColorDotMatrix(from: image, gridSize: 50)
+        XCTAssertNotNil(matrix, "Color dot matrix generation must succeed")
         XCTAssertEqual(matrix?.count, 50, "Matrix height must be 50")
         XCTAssertEqual(matrix?.first?.count, 50, "Matrix width must be 50")
         
-        // Check corner (white background -> high luminance)
-        let cornerLum = matrix?[0][0] ?? 0.0
-        XCTAssertGreaterThan(cornerLum, 0.8, "White background corner must have high luminance")
+        // Check corner (red background -> high red channel)
+        let cornerCell = matrix?[0][0]
+        XCTAssertNotNil(cornerCell)
+        XCTAssertGreaterThan(cornerCell?.r ?? 0.0, 0.7, "Red background corner must have high red component")
     }
 }
