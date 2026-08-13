@@ -559,13 +559,14 @@ enum DemucsError: Error {
 actor DemucsEngine {
     static let shared = DemucsEngine()
     
-    private var model: MLModel?
+    private var models: [MLModel] = []
+    private let concurrencyCount = 3
     private let chunkSize: Int = 441000 // 10 seconds at 44.1kHz
     
     private init() {}
     
     func initializeModel() async throws {
-        if model != nil { return }
+        if models.count == concurrencyCount { return }
         
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("Isolate")
         try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -584,12 +585,19 @@ actor DemucsEngine {
         let config = MLModelConfiguration()
         config.computeUnits = .all
         
-        model = try await Task.detached { try MLModel(contentsOf: compiledURL, configuration: config) }.value
+        let count = concurrencyCount
+        models = try await Task.detached {
+            var loaded: [MLModel] = []
+            for _ in 0..<count {
+                loaded.append(try MLModel(contentsOf: compiledURL, configuration: config))
+            }
+            return loaded
+        }.value
     }
     
     func splitAudio(url: URL, progressCallback: @escaping @Sendable (Double) -> Void) async throws -> [URL] {
         try await initializeModel()
-        guard let model = model else { throw DemucsError.modelNotFound }
+        guard models.count == concurrencyCount else { throw DemucsError.modelNotFound }
         
         let inFile = try AVAudioFile(forReading: url)
         let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44100, channels: 2, interleaved: false)!
@@ -647,61 +655,60 @@ actor DemucsEngine {
         // 8 arrays: [VocalsL, VocalsR, DrumsL, DrumsR, BassL, BassR, OtherL, OtherR]
         var accumulators = [[Float]](repeating: [Float](repeating: 0.0, count: totalFrames), count: 8)
         
-        let inputShape: [NSNumber] = [1, 2, NSNumber(value: chunkSize)]
-        let inputArray = try MLMultiArray(shape: inputShape, dataType: .float32)
+        let numChunks = Int(ceil(Double(totalFrames) / Double(hopSize)))
+        let localModels = models
         
-        var currentFrame = 0
-        
-        while currentFrame < totalFrames {
-            let remain = totalFrames - currentFrame
-            let readFrames = min(chunkSize, remain)
+        try await withThrowingTaskGroup(of: (Int, Int, Int, MLMultiArray).self) { group in
+            var activeTasks = 0
+            var completedChunks = 0
             
-            let ptrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
-            let ptrR = ptrL.advanced(by: chunkSize)
-            
-            vDSP_vclr(ptrL, 1, vDSP_Length(chunkSize * 2))
-            
-            for i in 0..<readFrames {
-                ptrL[i] = inL[currentFrame + i]
-                ptrR[i] = inR[currentFrame + i]
-            }
-            
-            let inputProvider = try MLDictionaryFeatureProvider(dictionary: ["audio": MLFeatureValue(multiArray: inputArray)])
-            let prediction = try await Task.detached(priority: .userInitiated) {
-                try model.prediction(from: inputProvider)
-            }.value
-            
-            let outMultiArray = prediction.featureValue(for: "sources")!.multiArrayValue!
-            let isFloat32 = outMultiArray.dataType == .float32
-            let strides = outMultiArray.strides
-            let stemStride = strides[1].intValue
-            let channelStride = strides[2].intValue
-            
-            for stemIdx in 0..<4 {
-                let outStemOffset = stemIdx * stemStride
-                if isFloat32 {
-                    let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float.self)
-                    let srcL = outPtr.advanced(by: outStemOffset)
-                    let srcR = outPtr.advanced(by: outStemOffset + channelStride)
-                    for i in 0..<readFrames {
-                        let w = window[i]
-                        accumulators[stemIdx * 2][currentFrame + i] += srcL[i] * w
-                        accumulators[stemIdx * 2 + 1][currentFrame + i] += srcR[i] * w
-                    }
-                } else {
-                    let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float16.self)
-                    let srcL = outPtr.advanced(by: outStemOffset)
-                    let srcR = outPtr.advanced(by: outStemOffset + channelStride)
-                    for i in 0..<readFrames {
-                        let w = window[i]
-                        accumulators[stemIdx * 2][currentFrame + i] += Float(srcL[i]) * w
-                        accumulators[stemIdx * 2 + 1][currentFrame + i] += Float(srcR[i]) * w
+            for chunkIdx in 0..<numChunks {
+                let currentFrame = chunkIdx * hopSize
+                if currentFrame >= totalFrames { break }
+                
+                if activeTasks >= concurrencyCount {
+                    if let result = try await group.next() {
+                        activeTasks -= 1
+                        completedChunks += 1
+                        let (_, cFrame, rFrames, outArr) = result
+                        self.applyOverlapAdd(outMultiArray: outArr, accumulators: &accumulators, currentFrame: cFrame, readFrames: rFrames, window: window)
+                        progressCallback(min(1.0, Double(completedChunks) / Double(numChunks)))
                     }
                 }
+                
+                let assignedModel = localModels[chunkIdx % concurrencyCount]
+                let remain = totalFrames - currentFrame
+                let readFrames = min(chunkSize, remain)
+                
+                let inShape: [NSNumber] = [1, 2, NSNumber(value: chunkSize)]
+                let inputArray = try MLMultiArray(shape: inShape, dataType: .float32)
+                
+                let ptrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
+                let ptrR = ptrL.advanced(by: chunkSize)
+                
+                vDSP_vclr(ptrL, 1, vDSP_Length(chunkSize * 2))
+                
+                for i in 0..<readFrames {
+                    ptrL[i] = inL[currentFrame + i]
+                    ptrR[i] = inR[currentFrame + i]
+                }
+                
+                group.addTask(priority: .userInitiated) {
+                    let inputProvider = try MLDictionaryFeatureProvider(dictionary: ["audio": MLFeatureValue(multiArray: inputArray)])
+                    let prediction = try assignedModel.prediction(from: inputProvider)
+                    let resultMultiArray = prediction.featureValue(for: "sources")!.multiArrayValue!
+                    return (chunkIdx, currentFrame, readFrames, resultMultiArray)
+                }
+                
+                activeTasks += 1
             }
             
-            currentFrame += hopSize
-            progressCallback(min(1.0, Double(currentFrame) / Double(totalFrames)))
+            while let result = try await group.next() {
+                completedChunks += 1
+                let (_, cFrame, rFrames, outArr) = result
+                self.applyOverlapAdd(outMultiArray: outArr, accumulators: &accumulators, currentFrame: cFrame, readFrames: rFrames, window: window)
+                progressCallback(min(1.0, Double(completedChunks) / Double(numChunks)))
+            }
         }
         
         // Write the fully assembled accumulators to WAV files
@@ -725,5 +732,35 @@ actor DemucsEngine {
         }
         
         return outputURLs
+    }
+    
+    private nonisolated func applyOverlapAdd(outMultiArray: MLMultiArray, accumulators: inout [[Float]], currentFrame: Int, readFrames: Int, window: [Float]) {
+        let isFloat32 = outMultiArray.dataType == .float32
+        let strides = outMultiArray.strides
+        let stemStride = strides[1].intValue
+        let channelStride = strides[2].intValue
+        
+        for stemIdx in 0..<4 {
+            let outStemOffset = stemIdx * stemStride
+            if isFloat32 {
+                let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float.self)
+                let srcL = outPtr.advanced(by: outStemOffset)
+                let srcR = outPtr.advanced(by: outStemOffset + channelStride)
+                for i in 0..<readFrames {
+                    let w = window[i]
+                    accumulators[stemIdx * 2][currentFrame + i] += srcL[i] * w
+                    accumulators[stemIdx * 2 + 1][currentFrame + i] += srcR[i] * w
+                }
+            } else {
+                let outPtr = outMultiArray.dataPointer.assumingMemoryBound(to: Float16.self)
+                let srcL = outPtr.advanced(by: outStemOffset)
+                let srcR = outPtr.advanced(by: outStemOffset + channelStride)
+                for i in 0..<readFrames {
+                    let w = window[i]
+                    accumulators[stemIdx * 2][currentFrame + i] += Float(srcL[i]) * w
+                    accumulators[stemIdx * 2 + 1][currentFrame + i] += Float(srcR[i]) * w
+                }
+            }
+        }
     }
 }
