@@ -420,7 +420,7 @@ public final class AudioEngineManager: @unchecked Sendable {
     @MainActor
     private func startEtaCountdownTimer() {
         etaTimer?.invalidate()
-        etaTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.isSplitting else { return }
                 if self.targetEtaSeconds > 1 {
@@ -431,6 +431,8 @@ public final class AudioEngineManager: @unchecked Sendable {
                 }
             }
         }
+        RunLoop.main.add(t, forMode: .common)
+        self.etaTimer = t
     }
     
     private func extractMetadata(url: URL) {
@@ -636,10 +638,10 @@ public final class AudioEngineManager: @unchecked Sendable {
         }
     }
     
-    // High-precision 60Hz Playback Timer (16.6ms) for Instantaneous Time & Progress Sync
+    // High-precision 60Hz Playback Timer (16.6ms) for Instantaneous Time & Progress Sync (Active in Common RunLoop Modes)
     private func startPlaybackTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self = self,
                   let file = self.audioFile,
                   let lastTime = self.vocalPlayer.lastRenderTime,
@@ -666,6 +668,8 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.currentTimeString = String(format: "%02d:%02d / -%02d:%02d", mins, secs, rMins, rSecs)
             }
         }
+        RunLoop.main.add(t, forMode: .common)
+        self.timer = t
     }
     
     @MainActor

@@ -8,25 +8,29 @@ struct LibraryView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @Query(sort: \TrackModel.dateAdded, order: .reverse) private var tracks: [TrackModel]
     
-    @State private var trackToRename: TrackModel?
-    @State private var renameText: String = ""
     @State private var isShowingRenameModal = false
-    
-    @State private var trackToDelete: TrackModel?
     @State private var isShowingDeleteModal = false
+    @State private var trackToRename: TrackModel? = nil
+    @State private var trackToDelete: TrackModel? = nil
+    @State private var renameText = ""
+    @State private var activeMenuTrackID: String? = nil
+    
+    public init() {}
     
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
-                // Header & Import Button
-                VStack(alignment: .leading, spacing: 14) {
+                // Header: Title & Quick Import Track Button
+                HStack {
                     Text("LIBRARY")
                         .font(.custom("DotGothic16-Regular", size: 14))
                         .foregroundColor(.gray)
                     
+                    Spacer()
+                    
                     Button(action: importTrack) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle")
                             Text("IMPORT TRACK")
                         }
                         .font(.custom("DotGothic16-Regular", size: 14))
@@ -64,17 +68,28 @@ struct LibraryView: View {
                                 TrackRowView(
                                     track: track,
                                     isActive: engineManager.currentTrackName == track.title.uppercased(),
+                                    isMenuOpen: activeMenuTrackID == track.id,
+                                    onToggleMenu: {
+                                        if activeMenuTrackID == track.id {
+                                            activeMenuTrackID = nil
+                                        } else {
+                                            activeMenuTrackID = track.id
+                                        }
+                                    },
                                     onSelect: {
+                                        activeMenuTrackID = nil
                                         Task {
                                             await engineManager.loadTrack(track)
                                         }
                                     },
                                     onRename: {
+                                        activeMenuTrackID = nil
                                         trackToRename = track
                                         renameText = track.title
                                         isShowingRenameModal = true
                                     },
                                     onDelete: {
+                                        activeMenuTrackID = nil
                                         trackToDelete = track
                                         isShowingDeleteModal = true
                                     }
@@ -87,6 +102,11 @@ struct LibraryView: View {
                 }
             }
             .background(Color.black.opacity(0.85))
+            .onTapGesture {
+                if activeMenuTrackID != nil {
+                    activeMenuTrackID = nil
+                }
+            }
             
             // MARK: - Nothing-Style Rename Modal
             if isShowingRenameModal, let track = trackToRename {
@@ -249,109 +269,137 @@ struct LibraryView: View {
 struct TrackRowView: View {
     let track: TrackModel
     let isActive: Bool
+    let isMenuOpen: Bool
+    let onToggleMenu: () -> Void
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
     
     @State private var isHovered = false
-    @State private var showActionsMenu = false
+    @State private var isRenameHovered = false
+    @State private var isDeleteHovered = false
     
     var body: some View {
-        HStack(spacing: 8) {
-            // Main Track Click Area
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(track.title)
-                        .font(.custom("DotGothic16-Regular", size: 15))
-                        .foregroundColor(isActive ? .red : .white)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 8) {
-                        Text(track.dateAdded, style: .date)
-                            .font(.custom("DotGothic16-Regular", size: 11))
-                            .foregroundColor(.gray)
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 8) {
+                // Main Track Click Area
+                Button(action: {
+                    if isMenuOpen {
+                        onToggleMenu()
+                    } else {
+                        onSelect()
+                    }
+                }) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(track.title)
+                            .font(.custom("DotGothic16-Regular", size: 15))
+                            .foregroundColor(isActive ? .red : .white)
+                            .lineLimit(1)
                         
-                        if isActive {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 4, height: 4)
+                        HStack(spacing: 8) {
+                            Text(track.dateAdded, style: .date)
+                                .font(.custom("DotGothic16-Regular", size: 11))
+                                .foregroundColor(.gray)
+                            
+                            if isActive {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 4, height: 4)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                
+                // Nothing Hardware 3-Dots Action Button
+                Button(action: {
+                    Haptics.playClick()
+                    onToggleMenu()
+                }) {
+                    HStack(spacing: 2.5) {
+                        Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                        Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                        Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                    }
+                    .frame(width: 24, height: 24)
+                    .background(isMenuOpen ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(isMenuOpen ? Color.red : (isHovered ? Color.white.opacity(0.25) : Color.clear), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(isActive ? Color.red.opacity(0.12) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
+            .border(isActive ? Color.red.opacity(0.4) : Color.clear, width: 1)
+            .onHover { hovering in
+                isHovered = hovering
+            }
             
-            // Nothing Hardware 3-Dots Action Button & Dropdown
-            Button(action: {
-                Haptics.playClick()
-                showActionsMenu.toggle()
-            }) {
-                HStack(spacing: 2.5) {
-                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
-                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
-                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
-                }
-                .frame(width: 24, height: 24)
-                .background(showActionsMenu ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
-                .clipShape(RoundedRectangle(cornerRadius: 3))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(showActionsMenu ? Color.red : (isHovered ? Color.white.opacity(0.25) : Color.clear), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showActionsMenu, arrowEdge: .trailing) {
+            // In-View Flat Nothing Hardware Overlay (Zero Liquid Glass / Zero Popover Bubble)
+            if isMenuOpen {
                 VStack(alignment: .leading, spacing: 0) {
                     Button(action: {
-                        showActionsMenu = false
+                        Haptics.playClick()
                         onRename()
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Text("[ RENAME ]")
                                 .font(.custom("DotGothic16-Regular", size: 12))
-                                .foregroundColor(.white)
+                                .fontWeight(.bold)
+                                .foregroundColor(isRenameHovered ? .black : .white)
                             Spacer()
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(isRenameHovered ? Color.red : Color.clear)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        if hovering && !isRenameHovered { Haptics.playClick() }
+                        isRenameHovered = hovering
+                    }
                     
                     Divider()
-                        .background(Color.white.opacity(0.15))
+                        .background(Color.white.opacity(0.18))
                     
                     Button(action: {
-                        showActionsMenu = false
+                        Haptics.playClick()
                         onDelete()
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Text("[ DELETE ]")
                                 .font(.custom("DotGothic16-Regular", size: 12))
-                                .foregroundColor(.red)
+                                .fontWeight(.bold)
+                                .foregroundColor(isDeleteHovered ? .black : .red)
                             Spacer()
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(isDeleteHovered ? Color.red : Color.clear)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        if hovering && !isDeleteHovered { Haptics.playClick() }
+                        isDeleteHovered = hovering
+                    }
                 }
-                .frame(width: 130)
-                .background(Color(white: 0.06))
-                .border(Color.white.opacity(0.2), width: 1)
+                .frame(width: 120)
+                .background(Color(white: 0.08))
+                .border(Color.white.opacity(0.22), width: 1)
                 .overlay(CornerBrackets())
-                .padding(4)
+                .offset(x: -28, y: 0)
+                .zIndex(100)
+                .shadow(color: Color.black.opacity(0.9), radius: 6, x: 0, y: 3)
             }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(isActive ? Color.red.opacity(0.12) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
-        .border(isActive ? Color.red.opacity(0.4) : Color.clear, width: 1)
-        .onHover { hovering in
-            isHovered = hovering
         }
     }
 }
