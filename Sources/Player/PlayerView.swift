@@ -669,6 +669,8 @@ struct DotMatrixProgressBar: View {
 struct TransportBar: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @State private var wasPlayingBeforeDrag = false
+    @State private var isBypassHovered = false
+    @State private var isExportHovered = false
     
     var body: some View {
         HStack(spacing: 16) {
@@ -713,26 +715,43 @@ struct TransportBar: View {
                     .frame(width: 44, height: 44)
                     .background(Color.red)
                     .clipShape(Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(PlainButtonStyle())
             .keyboardShortcut(.space, modifiers: [])
             
-            // Master Bypass A/B Comparison Toggle
-            Button(engineManager.isBypassed ? "BYPASS: ON" : "BYPASS: OFF") {
+            // Master Bypass A/B Comparison Toggle (Fixed 110x34pt Hardware Dimensions & Full-Surface Hit Box)
+            Button(action: {
                 Haptics.playClick()
                 engineManager.isBypassed.toggle()
+            }) {
+                Text(engineManager.isBypassed ? "BYPASS: ON" : "BYPASS: OFF")
+                    .font(.custom("DotGothic16-Regular", size: 13))
+                    .fontWeight(.bold)
+                    .frame(width: 110, height: 34)
+                    .background(
+                        engineManager.isBypassed
+                            ? Color.red
+                            : (isBypassHovered ? Color.white.opacity(0.08) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(
+                                engineManager.isBypassed
+                                    ? Color.red
+                                    : (isBypassHovered ? Color.white.opacity(0.8) : Color.red.opacity(0.8)),
+                                lineWidth: 1
+                            )
+                    )
+                    .foregroundColor(engineManager.isBypassed ? .black : .red)
+                    .contentShape(Rectangle()) // Entire 110x34 area clickable!
             }
-            .font(.custom("DotGothic16-Regular", size: 13))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(engineManager.isBypassed ? Color.red : Color.clear)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.red, lineWidth: 1))
-            .foregroundColor(engineManager.isBypassed ? .black : .red)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
             .buttonStyle(.plain)
+            .onHover { hovering in
+                isBypassHovered = hovering
+            }
             
-            // Export Stems Button with Fixed 140x34pt Hardware Dimensions & Centered Layout
+            // Export Stems Button with Fixed 140x34pt Hardware Dimensions & Full-Surface Hit Box
             Button(action: {
                 Haptics.playClick()
                 engineManager.exportStems()
@@ -741,15 +760,18 @@ struct TransportBar: View {
                     switch engineManager.exportState {
                     case .idle:
                         Text("EXPORT STEMS")
+                            .fontWeight(.bold)
                             .foregroundColor(.red)
                     case .exporting(let stage, let percent):
                         Text("\(stage) \(Int(percent * 100))%")
+                            .fontWeight(.bold)
                             .foregroundColor(.yellow)
                     case .completed:
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark")
                             Text("COMPLETED")
                         }
+                        .fontWeight(.bold)
                         .foregroundColor(.white)
                     }
                 }
@@ -758,16 +780,26 @@ struct TransportBar: View {
                 .background(
                     engineManager.exportState == .completed
                         ? Color.red
-                        : (engineManager.isExporting ? Color.red.opacity(0.25) : Color.clear)
+                        : (engineManager.isExporting
+                            ? Color.red.opacity(0.25)
+                            : (isExportHovered ? Color.white.opacity(0.08) : Color.clear))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(engineManager.exportState == .completed ? Color.white : Color.red, lineWidth: 1)
+                        .stroke(
+                            engineManager.exportState == .completed
+                                ? Color.white
+                                : (isExportHovered ? Color.white.opacity(0.8) : Color.red),
+                            lineWidth: 1
+                        )
                 )
-                .contentShape(Rectangle())
+                .contentShape(Rectangle()) // Entire 140x34 area clickable!
             }
             .disabled(engineManager.isExporting || engineManager.exportState == .completed)
             .buttonStyle(.plain)
+            .onHover { hovering in
+                isExportHovered = hovering
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
