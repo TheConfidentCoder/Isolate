@@ -152,17 +152,18 @@ struct SplittingProgressModal: View {
             VStack(spacing: 24) {
                 // Header Status: Rotating Nothing-Themed Quirky Headlines (0ms Snap)
                 Text(dynamicHeadline)
-                    .font(.custom("DotGothic16-Regular", size: 26))
+                    .font(.custom("DotGothic16-Regular", size: 22))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .frame(minHeight: 36)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: 32)
                 
                 // Discrete LED Hardware Progress Bar
                 ModalDotMatrixProgressBar(progress: engineManager.splitProgress)
-                    .frame(width: 440, height: 10)
+                    .frame(width: 480, height: 10)
                 
                 // Metrics Readout
-                HStack(spacing: 36) {
+                HStack(spacing: 48) {
                     VStack(alignment: .center, spacing: 4) {
                         Text("PROGRESS")
                             .font(.custom("DotGothic16-Regular", size: 12))
@@ -203,7 +204,9 @@ struct SplittingProgressModal: View {
                     Text(dynamicFooter)
                         .font(.custom("DotGothic16-Regular", size: 12))
                         .foregroundColor(.gray.opacity(0.85))
+                        .lineLimit(1)
                 }
+                .frame(minHeight: 20)
                 
                 // Prominent Bottom Nothing-Style Cancel Action Button
                 Button(action: {
@@ -233,7 +236,9 @@ struct SplittingProgressModal: View {
                     isCancelHovered = hovering
                 }
             }
-            .padding(40)
+            .padding(.horizontal, 36)
+            .padding(.vertical, 36)
+            .frame(width: 580)
             .background(Color.black.opacity(0.95))
             .border(Color.white.opacity(0.18), width: 1)
             .overlay(CornerBrackets())
