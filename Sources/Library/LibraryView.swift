@@ -254,6 +254,7 @@ struct TrackRowView: View {
     let onDelete: () -> Void
     
     @State private var isHovered = false
+    @State private var showActionsMenu = false
     
     var body: some View {
         HStack(spacing: 8) {
@@ -282,27 +283,68 @@ struct TrackRowView: View {
             }
             .buttonStyle(.plain)
             
-            // 3-Dots Action Menu
-            Menu {
-                Button(action: onRename) {
-                    Label("Rename Track", systemImage: "pencil")
+            // Nothing Hardware 3-Dots Action Button & Dropdown
+            Button(action: {
+                Haptics.playClick()
+                showActionsMenu.toggle()
+            }) {
+                HStack(spacing: 2.5) {
+                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                    Circle().fill(showActionsMenu ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
                 }
-                
-                Divider()
-                
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete Track", systemImage: "trash")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(isHovered ? .white : .gray)
-                    .frame(width: 28, height: 28)
-                    .background(isHovered ? Color.white.opacity(0.1) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                .frame(width: 24, height: 24)
+                .background(showActionsMenu ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(showActionsMenu ? Color.red : (isHovered ? Color.white.opacity(0.25) : Color.clear), lineWidth: 1)
+                )
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .popover(isPresented: $showActionsMenu, arrowEdge: .trailing) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Button(action: {
+                        showActionsMenu = false
+                        onRename()
+                    }) {
+                        HStack(spacing: 8) {
+                            Text("[ RENAME ]")
+                                .font(.custom("DotGothic16-Regular", size: 12))
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.15))
+                    
+                    Button(action: {
+                        showActionsMenu = false
+                        onDelete()
+                    }) {
+                        HStack(spacing: 8) {
+                            Text("[ DELETE ]")
+                                .font(.custom("DotGothic16-Regular", size: 12))
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(width: 130)
+                .background(Color(white: 0.06))
+                .border(Color.white.opacity(0.2), width: 1)
+                .overlay(CornerBrackets())
+                .padding(4)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

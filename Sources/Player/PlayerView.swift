@@ -662,65 +662,79 @@ struct MarqueeText: View {
     let font: Font
     
     @State private var offset: CGFloat = 0
-    @State private var isAnimating = false
+    @State private var animationTask: Task<Void, Never>? = nil
     
     var body: some View {
         GeometryReader { geo in
+            let containerWidth = geo.size.width
+            let textWidth = measureTextWidth(text)
+            
             Text(text)
                 .font(font)
                 .fixedSize(horizontal: true, vertical: false)
-                .background(
-                    GeometryReader { textGeo in
-                        Color.clear
-                            .onAppear {
-                                startAnimation(containerWidth: geo.size.width, textWidth: textGeo.size.width)
-                            }
-                            .onChange(of: text) { _, _ in
-                                startAnimation(containerWidth: geo.size.width, textWidth: textGeo.size.width)
-                            }
-                    }
-                )
                 .offset(x: offset)
-                .frame(width: geo.size.width, alignment: .leading)
+                .frame(width: containerWidth, alignment: .leading)
                 .clipped()
+                .onAppear {
+                    updateAnimation(containerWidth: containerWidth, textWidth: textWidth)
+                }
+                .onChange(of: text) { _, _ in
+                    updateAnimation(containerWidth: containerWidth, textWidth: textWidth)
+                }
+                .onChange(of: containerWidth) { _, newWidth in
+                    updateAnimation(containerWidth: newWidth, textWidth: textWidth)
+                }
         }
-        .frame(height: 30)
+        .frame(height: 32)
     }
     
-    private func startAnimation(containerWidth: CGFloat, textWidth: CGFloat) {
+    private func measureTextWidth(_ string: String) -> CGFloat {
+        let font = NSFont(name: "DotGothic16-Regular", size: 26) ?? NSFont.monospacedSystemFont(ofSize: 26, weight: .regular)
+        let attr: [NSAttributedString.Key: Any] = [.font: font]
+        return ceil((string as NSString).size(withAttributes: attr).width)
+    }
+    
+    private func updateAnimation(containerWidth: CGFloat, textWidth: CGFloat) {
+        animationTask?.cancel()
+        animationTask = nil
         offset = 0
-        isAnimating = false
         
         let diff = textWidth - containerWidth
-        if diff > 0 {
-            isAnimating = true
-            let speed: CGFloat = 30.0
+        guard diff > 8, containerWidth > 50 else {
+            offset = 0
+            return
+        }
+        
+        animationTask = Task { @MainActor in
+            let speed: CGFloat = 28.0 // px per second
             let totalTime = Double(diff / speed)
-            let steps = Int(diff / 12)
-            let timePerStep = steps > 0 ? totalTime / Double(steps) : 0
+            let steps = max(1, Int(diff / 8))
+            let timePerStep = totalTime / Double(steps)
             
-            Task { @MainActor in
-                while isAnimating {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    guard isAnimating else { break }
-                    
-                    for _ in 0..<steps {
-                        offset -= 12
-                        try? await Task.sleep(nanoseconds: UInt64(timePerStep * 1_000_000_000))
-                        guard isAnimating else { break }
-                    }
-                    offset = -diff
-                    
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    guard isAnimating else { break }
-                    
-                    for _ in 0..<steps {
-                        offset += 12
-                        try? await Task.sleep(nanoseconds: UInt64(timePerStep * 1_000_000_000))
-                        guard isAnimating else { break }
-                    }
-                    offset = 0
+            while !Task.isCancelled {
+                // Settle at start
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { break }
+                
+                // Ping to end
+                for step in 1...steps {
+                    offset = -CGFloat(step) * (diff / CGFloat(steps))
+                    try? await Task.sleep(nanoseconds: UInt64(timePerStep * 1_000_000_000))
+                    guard !Task.isCancelled else { break }
                 }
+                offset = -diff
+                
+                // Settle at end
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { break }
+                
+                // Pong back to start
+                for step in 1...steps {
+                    offset = -diff + CGFloat(step) * (diff / CGFloat(steps))
+                    try? await Task.sleep(nanoseconds: UInt64(timePerStep * 1_000_000_000))
+                    guard !Task.isCancelled else { break }
+                }
+                offset = 0
             }
         }
     }

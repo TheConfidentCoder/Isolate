@@ -22,6 +22,8 @@ struct IsolateApp: App {
                 .modelContainer(for: TrackModel.self)
                 .preferredColorScheme(.dark)
                 .frame(minWidth: 960, minHeight: 600)
+                .background(WindowAccessor())
+                .navigationTitle("")
                 .overlay {
                     if engineManager.isSplitting {
                         // Detailed AI Stem Splitting Progress Modal
@@ -115,6 +117,7 @@ struct IsolateApp: App {
                 }
         }
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     }
     
     private func handleDroppedFile(url: URL) {
@@ -184,5 +187,31 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.black)
+    }
+}
+
+// MARK: - Window Accessor to eliminate title text next to traffic lights
+struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.title = ""
+                window.titleVisibility = .hidden
+                window.titlebarAppearsTransparent = true
+                window.styleMask.insert(.fullSizeContentView)
+                window.isOpaque = false
+                window.backgroundColor = .black
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let window = nsView.window {
+            window.title = ""
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+        }
     }
 }
