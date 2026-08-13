@@ -333,13 +333,13 @@ public final class AudioEngineManager: @unchecked Sendable {
         let asset = AVURLAsset(url: url)
         let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
         let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
-        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.70 + 2.0)))
+        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.58 + 1.2)))
         
         await MainActor.run {
             self.currentTrackName = url.lastPathComponent.uppercased()
             self.isSplitting = true
             self.isCompilingModel = false
-            self.splitProgress = 0.03
+            self.splitProgress = 0.0 // Pure 0% Start
             self.currentChunkNumber = 0
             self.totalChunkCount = estimatedChunks
             self.targetEtaSeconds = initialEtaSeconds
@@ -361,9 +361,14 @@ public final class AudioEngineManager: @unchecked Sendable {
                     self.splitStatusMessage = progressInfo.statusMessage
                     
                     let newEta = Int(round(progressInfo.estimatedRemainingSeconds))
-                    self.targetEtaSeconds = newEta
-                    let etaMins = newEta / 60
-                    let etaSecs = newEta % 60
+                    // Nudge target smoothly to prevent jumping
+                    if abs(newEta - self.targetEtaSeconds) > 3 {
+                        self.targetEtaSeconds = Int(round(0.35 * Double(newEta) + 0.65 * Double(self.targetEtaSeconds)))
+                    } else {
+                        self.targetEtaSeconds = newEta
+                    }
+                    let etaMins = self.targetEtaSeconds / 60
+                    let etaSecs = self.targetEtaSeconds % 60
                     self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
                 }
             }
@@ -398,6 +403,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.isSplitting = false
                 self.splitProgress = 1.0
             }
+            // Auto-Play Isolated Stems on Completion (User Requirement A10)
             playSynced()
             return data
         } catch {

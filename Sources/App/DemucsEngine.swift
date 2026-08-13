@@ -127,9 +127,9 @@ public actor DemucsEngine {
     ) async throws -> [URL] {
         let startTime = CACurrentMediaTime()
         
-        // Stage 1: Immediate feedback for decoding
+        // Stage 1: Immediate feedback for decoding (0% -> 2%)
         progressCallback(SplitProgressInfo(
-            fraction: 0.03,
+            fraction: 0.01,
             currentChunk: 0,
             totalChunks: 0,
             elapsedSeconds: 0,
@@ -182,23 +182,23 @@ public actor DemucsEngine {
             return outputURLs
         }
         
-        // Stage 2: Tensor Prep and Symmetrical Reflection Padding
+        // Stage 2: Tensor Prep and Symmetrical Reflection Padding (2% -> 3%)
         let padSize = Self.hopSize
         let paddedFrames = originalFrames + 2 * padSize
         let chunkSize = Self.chunkSize
         let hopSize = Self.hopSize
         let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
         
-        var smoothedETA: Double = Double(numChunks) * 0.75 + 1.5
+        var smoothedETA: Double = Double(numChunks) * 0.58 + 1.2
         let elapsedDec = CACurrentMediaTime() - startTime
         
         progressCallback(SplitProgressInfo(
-            fraction: 0.12,
+            fraction: 0.02,
             currentChunk: 0,
             totalChunks: numChunks,
             elapsedSeconds: elapsedDec,
             estimatedRemainingSeconds: max(1.0, smoothedETA),
-            statusMessage: "PREPARING NEURAL ENGINE & TENSORS..."
+            statusMessage: "PREPARING NEURAL ENGINE..."
         ))
         
         // 3. Compute Audio Energy / Standard Deviation for Demucs nominal scaling
@@ -251,7 +251,8 @@ public actor DemucsEngine {
         let inPtrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
         let inPtrR = inPtrL.advanced(by: chunkSize)
         
-        // Stage 3: Sequential Pipelined Inference Loop (14% to 90%)
+        // Stage 3: Sequential Pipelined Inference Loop (3% to 95%)
+        let inferenceStartTime = CACurrentMediaTime()
         for chunkIdx in 0..<numChunks {
             let chunkStart = chunkIdx * hopSize
             let chunkEnd = min(chunkStart + chunkSize, paddedFrames)
@@ -290,25 +291,29 @@ public actor DemucsEngine {
                 std: safeStd
             )
             
-            let currentElapsed = CACurrentMediaTime() - startTime
-            let inferenceFraction = Double(chunkIdx + 1) / Double(numChunks)
-            let totalFraction = 0.14 + (0.76 * inferenceFraction)
+            let completedChunks = chunkIdx + 1
+            let chunkProgress = Double(completedChunks) / Double(numChunks)
+            let totalFraction = 0.03 + (0.92 * chunkProgress) // 0.03 -> 0.95
             
-            // Real-Time Unified Progress Formula: ETA = ElapsedTime * ((1.0 - Progress) / Progress)
-            let rawETA = totalFraction > 0 ? currentElapsed * ((1.0 - totalFraction) / totalFraction) : smoothedETA
-            smoothedETA = (chunkIdx == 0) ? rawETA : (0.35 * rawETA + 0.65 * smoothedETA)
+            // Moving-Average Chunk Calibration: Measure exact Apple Silicon throughput
+            let inferenceElapsed = CACurrentMediaTime() - inferenceStartTime
+            let avgSecsPerChunk = max(0.20, inferenceElapsed / Double(completedChunks))
+            let remainingChunks = numChunks - completedChunks
+            let remainingSeconds = (Double(remainingChunks) * avgSecsPerChunk) + 1.2
+            
+            smoothedETA = (chunkIdx == 0) ? remainingSeconds : (0.25 * remainingSeconds + 0.75 * smoothedETA)
             
             progressCallback(SplitProgressInfo(
                 fraction: totalFraction,
-                currentChunk: chunkIdx + 1,
+                currentChunk: completedChunks,
                 totalChunks: numChunks,
-                elapsedSeconds: currentElapsed,
-                estimatedRemainingSeconds: max(0, smoothedETA),
-                statusMessage: "SEPARATING STEMS (CHUNK \(chunkIdx + 1)/\(numChunks))"
+                elapsedSeconds: CACurrentMediaTime() - startTime,
+                estimatedRemainingSeconds: max(1.0, smoothedETA),
+                statusMessage: "SEPARATING STEMS (CHUNK \(completedChunks)/\(numChunks))"
             ))
         }
         
-        // Stage 4: Normalize Accumulators & Write 32-Bit Lossless Stems (90% to 100%)
+        // Stage 4: Normalize Accumulators & Write 32-Bit Lossless Stems (95% to 100%)
         let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: Self.sampleRate,
@@ -318,18 +323,17 @@ public actor DemucsEngine {
         
         for stemIdx in 0..<4 {
             let stemName = Self.stemNames[stemIdx].uppercased()
-            let stemFraction = 0.90 + (0.10 * (Double(stemIdx + 1) / 4.0))
+            let stemFraction = 0.95 + (0.05 * (Double(stemIdx + 1) / 4.0))
             let writeElapsed = CACurrentMediaTime() - startTime
-            let rawETA = stemFraction < 1.0 ? writeElapsed * ((1.0 - stemFraction) / stemFraction) : 0.0
-            smoothedETA = (0.5 * rawETA + 0.5 * smoothedETA)
+            let remainingSecs = max(0.0, 1.2 * (1.0 - (Double(stemIdx + 1) / 4.0)))
             
             progressCallback(SplitProgressInfo(
                 fraction: stemFraction,
                 currentChunk: numChunks,
                 totalChunks: numChunks,
                 elapsedSeconds: writeElapsed,
-                estimatedRemainingSeconds: max(0, smoothedETA),
-                statusMessage: "WRITING LOSSLESS \(stemName)..."
+                estimatedRemainingSeconds: remainingSecs,
+                statusMessage: "SAVING ISOLATED STEMS..."
             ))
             
             let stemL = stemAccumulators[stemIdx * 2]

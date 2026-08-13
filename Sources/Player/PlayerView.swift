@@ -140,6 +140,90 @@ public struct PlayerView: View {
             // Fixed Bottom Transport & Mixer Controls
             TransportBar()
         }
+        .background {
+            // Number Keyboard Shortcuts: 1-4 for Mute, Shift+1-4 for Solo
+            Group {
+                Button("") { toggleMute(0) }.keyboardShortcut("1", modifiers: []).hidden()
+                Button("") { toggleMute(1) }.keyboardShortcut("2", modifiers: []).hidden()
+                Button("") { toggleMute(2) }.keyboardShortcut("3", modifiers: []).hidden()
+                Button("") { toggleMute(3) }.keyboardShortcut("4", modifiers: []).hidden()
+                
+                Button("") { toggleSolo(0) }.keyboardShortcut("1", modifiers: [.shift]).hidden()
+                Button("") { toggleSolo(1) }.keyboardShortcut("2", modifiers: [.shift]).hidden()
+                Button("") { toggleSolo(2) }.keyboardShortcut("3", modifiers: [.shift]).hidden()
+                Button("") { toggleSolo(3) }.keyboardShortcut("4", modifiers: [.shift]).hidden()
+            }
+        }
+    }
+    
+    private func toggleMute(_ index: Int) {
+        Haptics.playClick()
+        switch index {
+        case 0:
+            if engineManager.vocalMuted {
+                engineManager.vocalMuted = false
+            } else {
+                engineManager.vocalMuted = true
+                engineManager.vocalSolo = false
+            }
+        case 1:
+            if engineManager.drumMuted {
+                engineManager.drumMuted = false
+            } else {
+                engineManager.drumMuted = true
+                engineManager.drumSolo = false
+            }
+        case 2:
+            if engineManager.bassMuted {
+                engineManager.bassMuted = false
+            } else {
+                engineManager.bassMuted = true
+                engineManager.bassSolo = false
+            }
+        case 3:
+            if engineManager.otherMuted {
+                engineManager.otherMuted = false
+            } else {
+                engineManager.otherMuted = true
+                engineManager.otherSolo = false
+            }
+        default: break
+        }
+    }
+    
+    private func toggleSolo(_ index: Int) {
+        Haptics.playClick()
+        switch index {
+        case 0:
+            if engineManager.vocalSolo {
+                engineManager.vocalSolo = false
+            } else {
+                engineManager.vocalSolo = true
+                engineManager.vocalMuted = false
+            }
+        case 1:
+            if engineManager.drumSolo {
+                engineManager.drumSolo = false
+            } else {
+                engineManager.drumSolo = true
+                engineManager.drumMuted = false
+            }
+        case 2:
+            if engineManager.bassSolo {
+                engineManager.bassSolo = false
+            } else {
+                engineManager.bassSolo = true
+                engineManager.bassMuted = false
+            }
+        case 3:
+            if engineManager.otherSolo {
+                engineManager.otherSolo = false
+            } else {
+                engineManager.otherSolo = true
+                engineManager.otherMuted = false
+            }
+        default: break
+        }
     }
 }
 
@@ -149,6 +233,9 @@ struct StemChannelView: View {
     @Binding var isMuted: Bool
     @Binding var isSoloed: Bool
     let eqMagnitudes: [Float]
+    
+    @State private var isMutedHovered = false
+    @State private var isSoloedHovered = false
     
     var body: some View {
         VStack(spacing: 12) {
@@ -168,27 +255,59 @@ struct StemChannelView: View {
                 .frame(maxHeight: .infinity)
             
             HStack(spacing: 8) {
-                Button("M") {
+                // MUTE BUTTON
+                Button(action: {
                     Haptics.playClick()
-                    isMuted.toggle()
+                    if isMuted {
+                        isMuted = false
+                    } else {
+                        isMuted = true
+                        isSoloed = false // Mutual Exclusivity: disables Solo
+                    }
+                }) {
+                    Text("M")
+                        .font(.custom("DotGothic16-Regular", size: 13))
+                        .fontWeight(.bold)
+                        .frame(width: 34, height: 30)
+                        .background(isMuted ? Color.red : (isMutedHovered ? Color.white.opacity(0.08) : Color.clear))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isMuted ? Color.red : (isMutedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5)), lineWidth: 1)
+                        )
+                        .foregroundColor(isMuted ? .black : .white)
+                        .contentShape(Rectangle()) // Entire 34x30 area clickable!
                 }
-                .font(.custom("DotGothic16-Regular", size: 13))
-                .frame(width: 34, height: 30)
-                .background(isMuted ? Color.red : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.5), lineWidth: 1))
-                .foregroundColor(isMuted ? .black : .white)
                 .buttonStyle(.plain)
+                .onHover { hovering in
+                    isMutedHovered = hovering
+                }
                 
-                Button("S") {
+                // SOLO BUTTON
+                Button(action: {
                     Haptics.playClick()
-                    isSoloed.toggle()
+                    if isSoloed {
+                        isSoloed = false
+                    } else {
+                        isSoloed = true
+                        isMuted = false // Mutual Exclusivity: disables Mute
+                    }
+                }) {
+                    Text("S")
+                        .font(.custom("DotGothic16-Regular", size: 13))
+                        .fontWeight(.bold)
+                        .frame(width: 34, height: 30)
+                        .background(isSoloed ? Color.red : (isSoloedHovered ? Color.white.opacity(0.08) : Color.clear))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isSoloed ? Color.red : (isSoloedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5)), lineWidth: 1)
+                        )
+                        .foregroundColor(isSoloed ? .black : .white)
+                        .contentShape(Rectangle()) // Entire 34x30 area clickable!
                 }
-                .font(.custom("DotGothic16-Regular", size: 13))
-                .frame(width: 34, height: 30)
-                .background(isSoloed ? Color.red : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.5), lineWidth: 1))
-                .foregroundColor(isSoloed ? .black : .white)
                 .buttonStyle(.plain)
+                .onHover { hovering in
+                    isSoloedHovered = hovering
+                }
             }
         }
         .padding(.vertical, 16)
