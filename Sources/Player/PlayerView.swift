@@ -89,13 +89,11 @@ public struct PlayerView: View {
                     
                     Spacer(minLength: 20)
                     
-                    VStack(alignment: .trailing, spacing: 6) {
-                        RealWaveformView(
-                            amplitudes: engineManager.masterWaveformAmplitudes,
-                            ghostAmplitudes: engineManager.originalWaveformAmplitudes
-                        )
-                        EQSpectrumView(magnitudes: engineManager.masterEQMagnitudes)
-                    }
+                    DynamicIslandDotWaveformView(
+                        magnitudes: engineManager.masterEQMagnitudes,
+                        amplitudes: engineManager.masterWaveformAmplitudes,
+                        isPlaying: engineManager.isPlaying
+                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
@@ -578,60 +576,64 @@ struct CornerBrackets: View {
     }
 }
 
-struct RealWaveformView: View {
+// MARK: - Dynamic Island Dot-Matrix Waveform View (Apple Symmetric Midline Waveform in Nothing Red)
+struct DynamicIslandDotWaveformView: View {
+    let magnitudes: [Float]
     let amplitudes: [Float]
-    let ghostAmplitudes: [Float]
+    let isPlaying: Bool
+    
+    // 7 symmetric frequency / amplitude sampling bands (Bass -> Mid -> Highs)
+    private var barAmplitudes: [CGFloat] {
+        guard isPlaying else { return Array(repeating: 0.0, count: 7) }
+        
+        let magCount = magnitudes.count
+        let ampCount = amplitudes.count
+        
+        var bars: [CGFloat] = []
+        let indices = [2, 5, 9, 14, 19, 24, 28] // 7 distinct frequency bands
+        
+        for (i, binIdx) in indices.enumerated() {
+            var val: Float = 0.0
+            if binIdx < magCount {
+                val = magnitudes[binIdx] * 7.5
+            }
+            if i < ampCount {
+                val = max(val, amplitudes[i * max(1, ampCount / 7)] * 1.6)
+            }
+            let clamped = min(max(CGFloat(val), 0.0), 1.0)
+            bars.append(clamped)
+        }
+        return bars
+    }
     
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<amplitudes.count, id: \.self) { i in
-                let activeBlocks = max(1, Int(amplitudes[i] * 21))
-                let ghostBlocks = max(1, Int(ghostAmplitudes[i] * 21))
+        let bars = barAmplitudes
+        let blockCount = 9 // 9 vertical pixel blocks: center is index 4 (d = 0 to 4)
+        let centerIndex = 4
+        
+        HStack(spacing: 4.5) {
+            ForEach(0..<7, id: \.self) { barIndex in
+                let amp = bars[barIndex]
+                // Number of blocks to expand above and below center (0 to 4)
+                let spread = isPlaying ? max(0, min(4, Int(round(amp * 4.0)))) : 0
                 
-                VStack(spacing: 1) {
-                    ForEach(0..<21, id: \.self) { blockIndex in
-                        let distance = abs(10 - blockIndex)
-                        let activeThreshold = CGFloat(activeBlocks) / 2.0
-                        let ghostThreshold = CGFloat(ghostBlocks) / 2.0
+                VStack(spacing: 1.5) {
+                    ForEach(0..<blockCount, id: \.self) { blockIndex in
+                        let distance = abs(centerIndex - blockIndex)
+                        let isLit = distance <= spread
                         
-                        let isSolid = CGFloat(distance) <= activeThreshold
-                        let isGhost = CGFloat(distance) <= ghostThreshold
-                        
-                        Rectangle()
-                            .fill(isSolid ? Color.red : (isGhost ? Color.red.opacity(0.25) : Color.clear))
-                            .frame(width: 3, height: 2)
+                        RoundedRectangle(cornerRadius: 0.6)
+                            .fill(isLit ? Color.red : Color.red.opacity(0.06))
+                            .frame(width: 4.5, height: 2.5)
                     }
                 }
-                .animation(.linear(duration: 0.04), value: amplitudes)
+                .animation(.easeOut(duration: 0.06), value: amp)
             }
         }
-        .frame(height: 52)
+        .frame(height: 36)
     }
 }
 
-struct EQSpectrumView: View {
-    let magnitudes: [Float]
-    
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<magnitudes.count, id: \.self) { i in
-                let heightValue = min(1.0, CGFloat(magnitudes[i]) * 8.0)
-                let blocks = max(1, Int(heightValue * 8))
-                
-                VStack(spacing: 1) {
-                    Spacer(minLength: 0)
-                    ForEach(0..<blocks, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.red)
-                            .frame(width: 3, height: 2)
-                    }
-                }
-                .animation(.linear(duration: 0.04), value: magnitudes)
-            }
-        }
-        .frame(height: 24)
-    }
-}
 
 // MARK: - Discrete LED Dot-Matrix Progress Bar
 struct DotMatrixProgressBar: View {

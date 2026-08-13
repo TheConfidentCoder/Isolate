@@ -100,7 +100,7 @@ MOUNT_DIR=$(hdiutil attach -readwrite -noverify -noautoopen "$TMP_DMG" | egrep '
 echo "   Mounted temporary DMG at $MOUNT_DIR"
 
 # Configure Finder window layout using AppleScript
-osascript <<EOF
+osascript <<EOF || true
 tell application "Finder"
     tell disk "Isolate"
         open
@@ -125,7 +125,7 @@ tell application "Finder"
         end try
         
         update without registering applications
-        delay 2
+        delay 1
         close
     end tell
 end tell
