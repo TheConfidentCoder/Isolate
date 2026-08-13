@@ -194,28 +194,121 @@ struct StemMiniEQView: View {
     }
 }
 
-// MARK: - Hero 100x100 Album Art View with Nothing Hardware Bezel
+// MARK: - Nothing 50x50 Real-Time Dot-Matrix Processor
+public final class DotMatrixImageProcessor {
+    public static func generateDotMatrix(from image: NSImage, gridSize: Int = 50) -> [[Float]]? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let cgImage = bitmap.cgImage else { return nil }
+        
+        let width = gridSize
+        let height = gridSize
+        var rawData = [UInt8](repeating: 0, count: width * height * 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: &rawData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        var matrix = [[Float]](repeating: [Float](repeating: 0, count: width), count: height)
+        for y in 0..<height {
+            for x in 0..<width {
+                let imgY = (height - 1) - y
+                let offset = (imgY * width + x) * 4
+                let r = Float(rawData[offset]) / 255.0
+                let g = Float(rawData[offset + 1]) / 255.0
+                let b = Float(rawData[offset + 2]) / 255.0
+                let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                let contrastBoosted = powf(lum, 1.2)
+                matrix[y][x] = min(max(contrastBoosted, 0.0), 1.0)
+            }
+        }
+        return matrix
+    }
+}
+
+// MARK: - Hero 100x100 Album Art View with Nothing Dot-Matrix LED Screen
 struct AlbumArtView: View {
     let image: NSImage?
+    @Environment(AudioEngineManager.self) private var engineManager
+    @State private var dotMatrix: [[Float]]? = nil
+    @State private var isHovered = false
+    @State private var showColorOverride = false
     
     var body: some View {
         ZStack {
             Color.black
             
             if let img = image {
-                Image(nsImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 100, height: 100)
-                    .clipped()
+                ZStack {
+                    // 1. Real-Time 50x50 Nothing Dot-Matrix LED Canvas
+                    if let matrix = dotMatrix {
+                        Canvas { context, size in
+                            let gridSize = 50
+                            let cellWidth = size.width / CGFloat(gridSize)
+                            let cellHeight = size.height / CGFloat(gridSize)
+                            let audioEnergy = engineManager.isPlaying ? Double(engineManager.masterWaveformAmplitudes.reduce(0, +) / Float(max(1, engineManager.masterWaveformAmplitudes.count))) : 0.0
+                            let pulse = 1.0 + (audioEnergy * 0.12)
+                            
+                            for y in 0..<gridSize {
+                                for x in 0..<gridSize {
+                                    let lum = matrix[y][x]
+                                    guard lum > 0.02 else {
+                                        // Draw faint unlit LED cell for authentic hardware display depth
+                                        let dotRect = CGRect(
+                                            x: CGFloat(x) * cellWidth + cellWidth * 0.35,
+                                            y: CGFloat(y) * cellHeight + cellHeight * 0.35,
+                                            width: cellWidth * 0.3,
+                                            height: cellHeight * 0.3
+                                        )
+                                        context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(0.04)))
+                                        continue
+                                    }
+                                    
+                                    let baseRadius = (cellWidth * 0.46) * CGFloat(lum) * CGFloat(pulse)
+                                    let clampedRadius = min(cellWidth * 0.48, max(0.35, baseRadius))
+                                    
+                                    let centerX = CGFloat(x) * cellWidth + (cellWidth * 0.5)
+                                    let centerY = CGFloat(y) * cellHeight + (cellHeight * 0.5)
+                                    let dotRect = CGRect(
+                                        x: centerX - clampedRadius,
+                                        y: centerY - clampedRadius,
+                                        width: clampedRadius * 2,
+                                        height: clampedRadius * 2
+                                    )
+                                    
+                                    let opacity = min(1.0, 0.22 + Double(lum) * 0.78)
+                                    context.fill(Path(ellipseIn: dotRect), with: .color(Color.white.opacity(opacity)))
+                                }
+                            }
+                        }
+                        .frame(width: 100, height: 100)
+                    }
+                    
+                    // 2. High-Res Original Color Image on Hover or Click
+                    Image(nsImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipped()
+                        .opacity(isHovered || showColorOverride ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.25), value: isHovered || showColorOverride)
+                }
             } else {
+                // Standby diagnostic crosslines
                 ZStack {
                     Color.black
-                    // Dotted background grid
                     Rectangle()
                         .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     
-                    // Standby diagnostic crosslines
                     Path { path in
                         path.move(to: CGPoint(x: 0, y: 0))
                         path.addLine(to: CGPoint(x: 100, y: 100))
@@ -238,9 +331,53 @@ struct AlbumArtView: View {
             
             // Red Corner Accents (Nothing Hardware Style)
             CornerBrackets()
+            
+            // Glyph status badge in bottom-right
+            if image != nil {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(isHovered || showColorOverride ? "NATURAL" : "DOT MATRIX")
+                            .font(.custom("DotGothic16-Regular", size: 8))
+                            .foregroundColor(isHovered || showColorOverride ? .black : .red)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(isHovered || showColorOverride ? Color.white.opacity(0.9) : Color.black.opacity(0.8))
+                            .border(isHovered || showColorOverride ? Color.white : Color.red.opacity(0.6), width: 0.5)
+                            .padding(4)
+                    }
+                }
+            }
         }
         .frame(width: 100, height: 100)
         .clipped()
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .onTapGesture {
+            showColorOverride.toggle()
+        }
+        .onChange(of: image) { _, newImage in
+            updateMatrix(for: newImage)
+        }
+        .onAppear {
+            updateMatrix(for: image)
+        }
+    }
+    
+    private func updateMatrix(for img: NSImage?) {
+        guard let img = img else {
+            dotMatrix = nil
+            return
+        }
+        Task.detached(priority: .userInitiated) {
+            let matrix = DotMatrixImageProcessor.generateDotMatrix(from: img, gridSize: 50)
+            await MainActor.run {
+                self.dotMatrix = matrix
+            }
+        }
     }
 }
 
