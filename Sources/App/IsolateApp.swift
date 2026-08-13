@@ -96,17 +96,66 @@ struct IsolateApp: App {
 struct SplittingProgressModal: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @State private var isCancelHovered = false
+    @State private var currentHeadlineIndex = 0
+    @State private var currentFooterIndex = 0
+    @State private var isBlinking = false
+    @State private var rotationTimer: Timer? = nil
+    @State private var blinkTimer: Timer? = nil
+    
+    private var dynamicHeadline: String {
+        let progress = engineManager.splitProgress
+        if progress <= 0.005 {
+            return "INITIALIZING NEURAL ENGINE..."
+        } else if progress >= 0.98 {
+            return "RECOMBINING STEM MATRIX..."
+        } else if progress < 0.35 {
+            let earlyPool = [
+                "HUNTING DOWN THE 808 SUB BASS...",
+                "DE-BLEEDING DRUM TRANSIENTS...",
+                "SEPARATING SINE WAVES FROM SOUL...",
+                "ISOLATING THE GHOST IN THE MACHINE..."
+            ]
+            return earlyPool[currentHeadlineIndex % earlyPool.count]
+        } else if progress < 0.75 {
+            let midPool = [
+                "SURGICALLY EXTRACTING VOCALS...",
+                "UNTANGLING HARMONIC RESONANCE...",
+                "CONSULTING THE NEURAL ENGINE ORACLE...",
+                "PURGING BACKGROUND BLEED..."
+            ]
+            return midPool[currentHeadlineIndex % midPool.count]
+        } else {
+            let latePool = [
+                "POLISHING ISOLATED ARTIFACTS...",
+                "FILTERING RESIDUAL PHANTOM FREQUENCIES...",
+                "ALMOST AT 100% PURITY..."
+            ]
+            return latePool[currentHeadlineIndex % latePool.count]
+        }
+    }
+    
+    private var dynamicFooter: String {
+        let telemetryPool = [
+            "APPLE SILICON NEURAL ENGINE ACCELERATED",
+            "DEMUCS V4 COREML • FP16 QUANTIZED",
+            "44.1KHZ 16-BIT STEREO PRECISION MATRIX",
+            "HYBRID TRANSFORMER LATENCY 0.38X REALTIME",
+            "4-STEM ISOLATION • DUAL-CHANNEL DSP"
+        ]
+        return telemetryPool[currentFooterIndex % telemetryPool.count]
+    }
     
     var body: some View {
         ZStack {
             Color.black.opacity(0.92)
             
             VStack(spacing: 24) {
-                // Header Status
-                Text(engineManager.splitStatusMessage)
+                // Header Status: Rotating Nothing-Themed Quirky Headlines (0ms Snap)
+                Text(dynamicHeadline)
                     .font(.custom("DotGothic16-Regular", size: 26))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
+                    .frame(minHeight: 36)
                 
                 // Discrete LED Hardware Progress Bar
                 ModalDotMatrixProgressBar(progress: engineManager.splitProgress)
@@ -144,9 +193,17 @@ struct SplittingProgressModal: View {
                     }
                 }
                 
-                Text("APPLE SILICON NEURAL ENGINE ACCELERATED")
-                    .font(.custom("DotGothic16-Regular", size: 12))
-                    .foregroundColor(.gray.opacity(0.8))
+                // Footer Status: Dynamic Hardware Telemetry with Pulsing REC LED
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 6, height: 6)
+                        .opacity(isBlinking ? 1.0 : 0.2)
+                    
+                    Text(dynamicFooter)
+                        .font(.custom("DotGothic16-Regular", size: 12))
+                        .foregroundColor(.gray.opacity(0.85))
+                }
                 
                 // Prominent Bottom Nothing-Style Cancel Action Button
                 Button(action: {
@@ -182,6 +239,25 @@ struct SplittingProgressModal: View {
             .overlay(CornerBrackets())
         }
         .ignoresSafeArea()
+        .onAppear {
+            rotationTimer?.invalidate()
+            rotationTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+                Haptics.playAlignment()
+                currentHeadlineIndex += 1
+                currentFooterIndex += 1
+            }
+            
+            blinkTimer?.invalidate()
+            blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
+                isBlinking.toggle()
+            }
+        }
+        .onDisappear {
+            rotationTimer?.invalidate()
+            rotationTimer = nil
+            blinkTimer?.invalidate()
+            blinkTimer = nil
+        }
     }
 }
 
