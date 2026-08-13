@@ -350,7 +350,8 @@ public final class AudioEngineManager: @unchecked Sendable {
     }
     
     public func loadAndSplitAudio(url: URL) async -> TrackData? {
-        let task = Task<TrackData?, Error> {
+        let task = Task<TrackData?, Error> { [weak self] in
+            guard let self = self else { return nil }
             let asset = AVURLAsset(url: url)
             let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
             let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
@@ -370,10 +371,10 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.startEtaCountdownTimer()
             }
             
-            extractMetadata(url: url)
+            self.extractMetadata(url: url)
             
             let stemURLs = try await DemucsEngine.shared.splitAudio(url: url) { [weak self] progressInfo in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     guard let self = self, self.isSplitting else { return }
                     self.splitProgress = progressInfo.fraction
                     self.currentChunkNumber = progressInfo.currentChunk
@@ -406,7 +407,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             self.fileOther = fOther
             self.audioFile = try? AVAudioFile(forReading: url)
             
-            scheduleAllPlayers(at: nil)
+            self.scheduleAllPlayers(at: nil)
             
             let cleanTitle = url.deletingPathExtension().lastPathComponent
             let data = TrackData(
@@ -426,7 +427,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.splitProgress = 1.0
             }
             // Auto-Play Isolated Stems on Completion (User Requirement A10)
-            playSynced()
+            self.playSynced()
             return data
         }
         
