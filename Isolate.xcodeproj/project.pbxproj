@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0069FEA6D3BAA10A131EF98E /* HTDemucs.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = 0819B3BB5A285910BD94B4D0 /* HTDemucs.mlmodelc */; };
 		161EC9862A7208CA69D028EC /* IsolateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1A0F01EE97D0951555E052 /* IsolateApp.swift */; };
 		2F2A0BC6505F33710694C940 /* CustomFader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72591EB18E208F038A7760C /* CustomFader.swift */; };
 		49F7C5966BB4966F7B02CE38 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B32BB7E1AA2EC3946E2671E /* LibraryView.swift */; };
@@ -40,7 +39,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0819B3BB5A285910BD94B4D0 /* HTDemucs.mlmodelc */ = {isa = PBXFileReference; path = HTDemucs.mlmodelc; sourceTree = "<group>"; };
 		3B32BB7E1AA2EC3946E2671E /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFTAnalyzer.swift; sourceTree = "<group>"; };
 		53FFF484DB9B227FEA9BFA72 /* DemucsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemucsEngine.swift; sourceTree = "<group>"; };
@@ -63,7 +61,6 @@
 			isa = PBXGroup;
 			children = (
 				65D4E52007621CC6578509E0 /* DotGothic16-Regular.ttf */,
-				0819B3BB5A285910BD94B4D0 /* HTDemucs.mlmodelc */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -245,7 +242,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				95C2E3DA7EFB59D971F2F6E1 /* DotGothic16-Regular.ttf in Resources */,
-				0069FEA6D3BAA10A131EF98E /* HTDemucs.mlmodelc in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
