@@ -35,3 +35,7 @@ xcuserdata/
 *.mlmodelc
 *.mlpackage
 *.mlmodel
+
+# Distribution Artifacts
+dist/
+Assets/AppIcon.iconset/

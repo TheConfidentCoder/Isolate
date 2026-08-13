@@ -390,8 +390,126 @@ struct ContentView: View {
                         }
                     )
                 }
+            } else if AppMoveHelper.shared.shouldShowMoveModal {
+                // MARK: - Window-Centered Move to Applications Prompt
+                ZStack {
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            AppMoveHelper.shared.shouldShowMoveModal = false
+                        }
+                    
+                    MoveToApplicationsModalCard(
+                        appMoveHelper: AppMoveHelper.shared,
+                        onDismiss: {
+                            AppMoveHelper.shared.shouldShowMoveModal = false
+                        }
+                    )
+                }
             }
         }
+        .onAppear {
+            AppMoveHelper.shared.checkLocationOnStartup()
+        }
+    }
+}
+
+// MARK: - Move to Applications Modal Card
+struct MoveToApplicationsModalCard: View {
+    @ObservedObject var appMoveHelper: AppMoveHelper
+    let onDismiss: () -> Void
+    
+    @State private var isInstallHovered = false
+    @State private var isSkipHovered = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.app")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.red)
+                Text("MOVE TO APPLICATIONS?")
+                    .font(.custom("DotGothic16-Regular", size: 20))
+                    .foregroundColor(.white)
+            }
+            
+            Text("Isolate works best when installed in your Applications folder.\nWould you like to move it now and eject the installer?")
+                .font(.custom("DotGothic16-Regular", size: 13))
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            if let error = appMoveHelper.moveErrorMessage {
+                Text(error)
+                    .font(.custom("DotGothic16-Regular", size: 11))
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+            }
+            
+            HStack(spacing: 16) {
+                // Skip Button
+                Button(action: {
+                    Haptics.playClick()
+                    onDismiss()
+                }) {
+                    Text("NOT NOW")
+                        .font(.custom("DotGothic16-Regular", size: 13))
+                        .fontWeight(.bold)
+                        .foregroundColor(isSkipHovered ? .white : .gray)
+                        .frame(width: 120, height: 36)
+                        .background(isSkipHovered ? Color.white.opacity(0.12) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(isSkipHovered ? Color.white : Color.gray.opacity(0.6), lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.escape, modifiers: [])
+                .onHover { hovering in
+                    if hovering && !isSkipHovered { Haptics.playClick() }
+                    isSkipHovered = hovering
+                }
+                
+                // Move Button
+                Button(action: {
+                    Haptics.playClick()
+                    appMoveHelper.moveToApplications()
+                }) {
+                    HStack(spacing: 6) {
+                        if appMoveHelper.isMoving {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.right.circle.fill")
+                        }
+                        Text(appMoveHelper.isMoving ? "INSTALLING..." : "MOVE & RELAUNCH")
+                            .font(.custom("DotGothic16-Regular", size: 13))
+                            .fontWeight(.bold)
+                    }
+                    .foregroundColor(isInstallHovered ? .black : .white)
+                    .frame(width: 180, height: 36)
+                    .background(isInstallHovered ? Color.white : Color.red)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(Color.red, lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(appMoveHelper.isMoving)
+                .onHover { hovering in
+                    if hovering && !isInstallHovered { Haptics.playClick() }
+                    isInstallHovered = hovering
+                }
+            }
+        }
+        .padding(32)
+        .frame(width: 440)
+        .background(Color.black.opacity(0.96))
+        .border(Color.white.opacity(0.2), width: 1)
+        .overlay(CornerBrackets())
     }
 }
 
