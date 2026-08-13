@@ -63,7 +63,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity)
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 6) {
+                        VStack(spacing: 6) {
                             ForEach(tracks) { track in
                                 TrackRowView(
                                     track: track,
@@ -94,6 +94,7 @@ struct LibraryView: View {
                                         isShowingDeleteModal = true
                                     }
                                 )
+                                .zIndex(activeMenuTrackID == track.id ? 999 : 1)
                             }
                         }
                         .padding(.horizontal, 10)
@@ -342,7 +343,8 @@ struct TrackRowView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(isRenameHovered ? Color.red : Color.clear)
+                            .frame(maxWidth: .infinity)
+                            .background(isRenameHovered ? Color.red : Color.black)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -367,7 +369,8 @@ struct TrackRowView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(isDeleteHovered ? Color.red : Color.clear)
+                            .frame(maxWidth: .infinity)
+                            .background(isDeleteHovered ? Color.red : Color.black)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -377,12 +380,11 @@ struct TrackRowView: View {
                         }
                     }
                     .frame(width: 120)
-                    .background(Color(white: 0.08))
+                    .background(Color.black)
                     .border(Color.white.opacity(0.22), width: 1)
                     .overlay(CornerBrackets())
                     .offset(x: 0, y: 28) // Positioned directly below 3-dots button
-                    .zIndex(999)
-                    .shadow(color: Color.black.opacity(0.95), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color.black, radius: 10, x: 0, y: 4)
                 }
             }
         }
