@@ -18,15 +18,10 @@ struct IsolateApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(engineManager)
-                .modelContainer(for: TrackModel.self)
-                .preferredColorScheme(.dark)
-                .frame(minWidth: 960, minHeight: 600)
-                .background(WindowAccessor())
-                .navigationTitle("")
                 .overlay {
                     if engineManager.isSplitting {
                         SplittingProgressModal()
+                            .environment(engineManager)
                     } else if isTargeted {
                         // Drag & Drop Target Overlay
                         ZStack {
@@ -59,7 +54,14 @@ struct IsolateApp: App {
                     }
                     return false
                 }
+                .preferredColorScheme(.dark)
+                .frame(minWidth: 960, minHeight: 600)
+                .background(WindowAccessor())
+                .navigationTitle("")
+                .environment(engineManager)
         }
+        .modelContainer(for: TrackModel.self)
+        .environment(engineManager)
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
     }
