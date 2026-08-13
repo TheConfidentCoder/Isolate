@@ -189,12 +189,15 @@ public actor DemucsEngine {
         let hopSize = Self.hopSize
         let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
         
+        var smoothedETA: Double = Double(numChunks) * 0.75 + 1.5
+        let elapsedDec = CACurrentMediaTime() - startTime
+        
         progressCallback(SplitProgressInfo(
             fraction: 0.12,
             currentChunk: 0,
             totalChunks: numChunks,
-            elapsedSeconds: CACurrentMediaTime() - startTime,
-            estimatedRemainingSeconds: Double(numChunks) * 0.14 + 1.0,
+            elapsedSeconds: elapsedDec,
+            estimatedRemainingSeconds: max(1.0, smoothedETA),
             statusMessage: "PREPARING NEURAL ENGINE & TENSORS..."
         ))
         
@@ -248,12 +251,8 @@ public actor DemucsEngine {
         let inPtrL = inputArray.dataPointer.assumingMemoryBound(to: Float.self)
         let inPtrR = inPtrL.advanced(by: chunkSize)
         
-        // Exponential Moving Average tracker for isolated pure chunk inference time
-        var emaChunkTime: Double = 0.14
-        
         // Stage 3: Sequential Pipelined Inference Loop (14% to 90%)
         for chunkIdx in 0..<numChunks {
-            let chunkStartTime = CACurrentMediaTime()
             let chunkStart = chunkIdx * hopSize
             let chunkEnd = min(chunkStart + chunkSize, paddedFrames)
             let readFrames = chunkEnd - chunkStart
@@ -291,23 +290,20 @@ public actor DemucsEngine {
                 std: safeStd
             )
             
-            // Measure pure isolated chunk execution time
-            let chunkDuration = CACurrentMediaTime() - chunkStartTime
-            emaChunkTime = (chunkIdx == 0) ? min(chunkDuration, 0.25) : (0.4 * chunkDuration + 0.6 * emaChunkTime)
-            
-            let remainingChunks = numChunks - (chunkIdx + 1)
-            let estimatedSecondsRemaining = Double(remainingChunks) * emaChunkTime + 0.6
-            
-            // Fraction spans 14% to 90% during inference
+            let currentElapsed = CACurrentMediaTime() - startTime
             let inferenceFraction = Double(chunkIdx + 1) / Double(numChunks)
             let totalFraction = 0.14 + (0.76 * inferenceFraction)
+            
+            // Real-Time Unified Progress Formula: ETA = ElapsedTime * ((1.0 - Progress) / Progress)
+            let rawETA = totalFraction > 0 ? currentElapsed * ((1.0 - totalFraction) / totalFraction) : smoothedETA
+            smoothedETA = (chunkIdx == 0) ? rawETA : (0.35 * rawETA + 0.65 * smoothedETA)
             
             progressCallback(SplitProgressInfo(
                 fraction: totalFraction,
                 currentChunk: chunkIdx + 1,
                 totalChunks: numChunks,
-                elapsedSeconds: CACurrentMediaTime() - startTime,
-                estimatedRemainingSeconds: max(0, estimatedSecondsRemaining),
+                elapsedSeconds: currentElapsed,
+                estimatedRemainingSeconds: max(0, smoothedETA),
                 statusMessage: "SEPARATING STEMS (CHUNK \(chunkIdx + 1)/\(numChunks))"
             ))
         }
@@ -323,13 +319,16 @@ public actor DemucsEngine {
         for stemIdx in 0..<4 {
             let stemName = Self.stemNames[stemIdx].uppercased()
             let stemFraction = 0.90 + (0.10 * (Double(stemIdx + 1) / 4.0))
+            let writeElapsed = CACurrentMediaTime() - startTime
+            let rawETA = stemFraction < 1.0 ? writeElapsed * ((1.0 - stemFraction) / stemFraction) : 0.0
+            smoothedETA = (0.5 * rawETA + 0.5 * smoothedETA)
             
             progressCallback(SplitProgressInfo(
                 fraction: stemFraction,
                 currentChunk: numChunks,
                 totalChunks: numChunks,
-                elapsedSeconds: CACurrentMediaTime() - startTime,
-                estimatedRemainingSeconds: max(0, Double(4 - stemIdx) * 0.15),
+                elapsedSeconds: writeElapsed,
+                estimatedRemainingSeconds: max(0, smoothedETA),
                 statusMessage: "WRITING LOSSLESS \(stemName)..."
             ))
             

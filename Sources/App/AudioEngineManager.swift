@@ -333,7 +333,7 @@ public final class AudioEngineManager: @unchecked Sendable {
         let asset = AVURLAsset(url: url)
         let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
         let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
-        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.14 + 1.2)))
+        let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.70 + 2.0)))
         
         await MainActor.run {
             self.currentTrackName = url.lastPathComponent.uppercased()
