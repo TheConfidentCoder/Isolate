@@ -27,16 +27,15 @@
 1. Download the latest **`Isolate-v1.0.0.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases).
 2. Double-click the `.dmg` installer.
 3. Drag the **`Isolate.app`** icon into the **`Applications`** folder.
-4. Open **`Isolate.app`** from `/Applications`.
+4. Double-click **`Open Isolate (First Run)`** in the DMG (or right-click `Isolate.app` in `/Applications` $\to$ **Open**).
 
 > [!NOTE]  
-> **macOS Gatekeeper Notice (Ad-Hoc Open Source Build)**  
-> Because Isolate is open-source, on your first launch macOS may show a developer verification notice:
-> - **Method 1**: Right-click (or Control-click) `Isolate.app` in `/Applications` and choose **Open**, then click **Open** in the dialog.
-> - **Method 2**: Or run this one-line command in Terminal:
->   ```bash
->   xattr -cr /Applications/Isolate.app
->   ```
+> **One-Time macOS Gatekeeper Notice**  
+> Because Isolate is free, open-source software, macOS attaches a security quarantine flag on downloaded internet binaries.
+> - **Easiest**: Double-click **`Open Isolate (First Run)`** inside the DMG to unquarantine and launch in 1 click.
+> - **Alternative**: Right-click `Isolate.app` in `/Applications` and select **Open**.
+> - **Terminal**: `xattr -cr /Applications/Isolate.app`
+> *(Once installed to Applications via the in-app mover, quarantine is automatically stripped and you will never see this prompt again).*
 
 ---
 

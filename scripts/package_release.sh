@@ -59,6 +59,29 @@ echo "📦 Step 5/6: Preparing DMG staging directory..."
 cp -R "$APP_BUNDLE" "$STAGING_DIR/Isolate.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
+# Add One-Click First Run Quarantine Helper
+cat <<'EOF' > "$STAGING_DIR/Open Isolate (First Run).command"
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_PATH="$DIR/Isolate.app"
+if [ ! -d "$APP_PATH" ]; then
+    APP_PATH="/Applications/Isolate.app"
+fi
+
+echo "=========================================================="
+echo "⚡ ISOLATE: INITIALIZING FIRST RUN"
+echo "=========================================================="
+if [ -d "$APP_PATH" ]; then
+    echo "🔓 Removing macOS Gatekeeper quarantine from Isolate..."
+    xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
+    echo "🚀 Launching Isolate..."
+    open "$APP_PATH"
+else
+    echo "⚠️ Isolate.app not found. Please drag Isolate.app into Applications."
+fi
+EOF
+chmod +x "$STAGING_DIR/Open Isolate (First Run).command"
+
 mkdir -p "$STAGING_DIR/.background"
 cp "$PROJECT_DIR/Assets/dmg_background.png" "$STAGING_DIR/.background/dmg_background.png"
 if [ -f "$PROJECT_DIR/Assets/AppIcon.icns" ]; then
@@ -93,6 +116,13 @@ tell application "Finder"
         
         set position of item "Isolate.app" of container window to {165, 195}
         set position of item "Applications" of container window to {495, 195}
+        try
+            set position of file "Open Isolate (First Run).command" of container window to {330, 310}
+        on error
+            try
+                set position of item "Open Isolate (First Run).command" of container window to {330, 310}
+            end try
+        end try
         
         update without registering applications
         delay 2

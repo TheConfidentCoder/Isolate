@@ -103,6 +103,7 @@ func createDMGBackground() {
     let fontName = "Courier-Bold"
     let headerFont = NSFont(name: fontName, size: 12) ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
     let titleFont = NSFont(name: fontName, size: 18) ?? NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+    let hintFont = NSFont(name: fontName, size: 10.5) ?? NSFont.monospacedSystemFont(ofSize: 10.5, weight: .bold)
     let telemetryFont = NSFont(name: fontName, size: 10) ?? NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
     
     // App Title Top
@@ -111,7 +112,7 @@ func createDMGBackground() {
         .foregroundColor: NSColor.white
     ]
     let titleStr = NSAttributedString(string: "ISOLATE INSTALLER", attributes: titleAttr)
-    titleStr.draw(at: NSPoint(x: (width - titleStr.size().width) / 2, y: height - 56))
+    titleStr.draw(at: NSPoint(x: (width - titleStr.size().width) / 2, y: height - 52))
     
     // Action Label Center
     let actionAttr: [NSAttributedString.Key: Any] = [
@@ -127,18 +128,26 @@ func createDMGBackground() {
         .foregroundColor: NSColor.lightGray
     ]
     let leftStr = NSAttributedString(string: "ISOLATE.APP", attributes: boxLabelAttr)
-    leftStr.draw(at: NSPoint(x: leftCenterX - leftStr.size().width / 2, y: leftBox.minY - 26))
+    leftStr.draw(at: NSPoint(x: leftCenterX - leftStr.size().width / 2, y: leftBox.minY - 24))
     
     let rightStr = NSAttributedString(string: "APPLICATIONS", attributes: boxLabelAttr)
-    rightStr.draw(at: NSPoint(x: rightCenterX - rightStr.size().width / 2, y: rightBox.minY - 26))
+    rightStr.draw(at: NSPoint(x: rightCenterX - rightStr.size().width / 2, y: rightBox.minY - 24))
+    
+    // First Run Gatekeeper Helper Banner
+    let hintAttr: [NSAttributedString.Key: Any] = [
+        .font: hintFont,
+        .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.35, blue: 0.35, alpha: 1.0)
+    ]
+    let hintStr = NSAttributedString(string: "FIRST LAUNCH: Right-click Isolate.app → Open (or double-click 'Open Isolate')", attributes: hintAttr)
+    hintStr.draw(at: NSPoint(x: (width - hintStr.size().width) / 2, y: 52))
     
     // Bottom Telemetry
     let footAttr: [NSAttributedString.Key: Any] = [
         .font: telemetryFont,
-        .foregroundColor: NSColor(calibratedWhite: 0.55, alpha: 1.0)
+        .foregroundColor: NSColor(calibratedWhite: 0.45, alpha: 1.0)
     ]
     let footStr = NSAttributedString(string: "DEMUCS V4 COREML • APPLE SILICON NEURAL ENGINE ACCELERATED", attributes: footAttr)
-    footStr.draw(at: NSPoint(x: (width - footStr.size().width) / 2, y: 30))
+    footStr.draw(at: NSPoint(x: (width - footStr.size().width) / 2, y: 26))
     
     image.unlockFocus()
     
@@ -184,42 +193,81 @@ func createAppIcon() {
         let corner = s * 0.2237 // Apple standard macOS squircle proportion
         let path = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
         ctx.addPath(path)
-        ctx.setFillColor(CGColor(red: 0.04, green: 0.04, blue: 0.04, alpha: 1.0))
+        ctx.setFillColor(CGColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1.0))
         ctx.fillPath()
+        
+        // Subtle Faint Dot Grid Texture
+        ctx.saveGState()
+        ctx.addPath(path)
+        ctx.clip()
+        
+        let dotStep = max(3.0, s * 0.05)
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.035))
+        for gx in stride(from: dotStep, through: s - dotStep, by: dotStep) {
+            for gy in stride(from: dotStep, through: s - dotStep, by: dotStep) {
+                let dotW = max(1.0, s * 0.012)
+                ctx.fill(CGRect(x: gx, y: gy, width: dotW, height: dotW))
+            }
+        }
+        ctx.restoreGState()
         
         // Subtle Inner Bezel Border
         ctx.addPath(path)
-        ctx.setStrokeColor(CGColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1.0))
+        ctx.setStrokeColor(CGColor(red: 0.22, green: 0.22, blue: 0.22, alpha: 1.0))
         ctx.setLineWidth(max(1.0, s * 0.015))
         ctx.strokePath()
         
-        // Center Hardware Graphic: 4 Isolated Stem Bars (Vocals, Drums, Bass, Other)
-        let barWidth = max(2.0, s * 0.085)
-        let barSpacing = max(2.0, s * 0.055)
-        let heights: [CGFloat] = [0.45, 0.78, 0.92, 0.58]
-        let totalW = CGFloat(heights.count) * barWidth + CGFloat(heights.count - 1) * barSpacing
-        let startX = (s - totalW) / 2.0
-        let maxHeight = s * 0.46
-        let startY = (s - maxHeight) / 2.0
+        // Center Hardware Graphic: 4 Dot-Matrix Pixel Stems (Vocals, Drums, Bass, Other)
+        // Dot counts per stem: 5, 8, 10, 6 square pixels
+        let stemPixelCounts = [5, 8, 10, 6]
+        let maxDots = 10
         
-        for (i, hFactor) in heights.enumerated() {
-            let x = startX + CGFloat(i) * (barWidth + barSpacing)
-            let h = maxHeight * hFactor
-            let y = startY + (maxHeight - h) / 2.0
+        let pixelSize = max(2.0, s * 0.075)
+        let pixelGap = max(1.0, s * 0.02)
+        let colSpacing = max(2.0, s * 0.05)
+        
+        let totalW = CGFloat(4) * pixelSize + CGFloat(3) * colSpacing
+        let startX = (s - totalW) / 2.0
+        
+        let totalMaxH = CGFloat(maxDots) * pixelSize + CGFloat(maxDots - 1) * pixelGap
+        let startY = (s - totalMaxH) / 2.0
+        
+        for (colIndex, count) in stemPixelCounts.enumerated() {
+            let colX = startX + CGFloat(colIndex) * (pixelSize + colSpacing)
+            let colH = CGFloat(count) * pixelSize + CGFloat(count - 1) * pixelGap
+            let colStartY = startY + (totalMaxH - colH) / 2.0 // vertically centered
             
-            // Vocals & Drums (Red), Bass & Other (White/Light Gray)
-            let color = (i == 1 || i == 2) ? CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0) : CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
+            // Stem Colors: Bar 1 (White), Bar 2 (Red), Bar 3 (Red), Bar 4 (White)
+            let color: CGColor
+            if colIndex == 1 || colIndex == 2 {
+                color = CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0)
+            } else {
+                color = CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
+            }
             ctx.setFillColor(color)
-            let barRect = CGRect(x: x, y: y, width: barWidth, height: h)
-            let barPath = CGPath(roundedRect: barRect, cornerWidth: barWidth * 0.35, cornerHeight: barWidth * 0.35, transform: nil)
-            ctx.addPath(barPath)
-            ctx.fillPath()
+            
+            for dotIndex in 0..<count {
+                let dotY = colStartY + CGFloat(dotIndex) * (pixelSize + pixelGap)
+                let dotRect = CGRect(x: colX, y: dotY, width: pixelSize, height: pixelSize)
+                let dotRadius = max(0.5, pixelSize * 0.18) // subtle rounded square pixel
+                let dotPath = CGPath(roundedRect: dotRect, cornerWidth: dotRadius, cornerHeight: dotRadius, transform: nil)
+                ctx.addPath(dotPath)
+                ctx.fillPath()
+            }
         }
         
-        // Red corner LED dot
-        let dotSize = max(3.0, s * 0.065)
+        // Red corner LED status indicator dot (Top-Right)
+        let dotSize = max(3.0, s * 0.07)
+        let dotX = s - corner - dotSize * 0.6
+        let dotY = s - corner - dotSize * 0.6
+        
+        // Outer faint glow
+        ctx.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 0.25))
+        ctx.fillEllipse(in: CGRect(x: dotX - dotSize * 0.25, y: dotY - dotSize * 0.25, width: dotSize * 1.5, height: dotSize * 1.5))
+        
+        // Solid LED
         ctx.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 1.0))
-        ctx.fillEllipse(in: CGRect(x: s - corner - dotSize, y: s - corner - dotSize, width: dotSize, height: dotSize))
+        ctx.fillEllipse(in: CGRect(x: dotX, y: dotY, width: dotSize, height: dotSize))
         
         img.unlockFocus()
         
@@ -241,7 +289,7 @@ func createAppIcon() {
     // Copy to Sources/Resources/AppIcon.icns
     try? FileManager.default.removeItem(atPath: "Sources/Resources/AppIcon.icns")
     try? FileManager.default.copyItem(atPath: "Assets/AppIcon.icns", toPath: "Sources/Resources/AppIcon.icns")
-    print("Generated complete multi-resolution AppIcon.icns")
+    print("Generated complete Nothing dot-matrix AppIcon.icns")
 }
 
 createDMGBackground()

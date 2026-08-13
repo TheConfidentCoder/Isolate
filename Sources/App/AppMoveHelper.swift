@@ -49,6 +49,13 @@ public final class AppMoveHelper: ObservableObject {
                 
                 try fileManager.copyItem(at: sourceURL, to: destURL)
                 
+                // Strip macOS Gatekeeper quarantine from installed app
+                let xattrProcess = Process()
+                xattrProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+                xattrProcess.arguments = ["-dr", "com.apple.quarantine", destURL.path]
+                try? xattrProcess.run()
+                xattrProcess.waitUntilExit()
+                
                 let config = NSWorkspace.OpenConfiguration()
                 config.createsNewApplicationInstance = true
                 
