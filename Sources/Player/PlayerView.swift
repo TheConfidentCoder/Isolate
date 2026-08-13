@@ -251,6 +251,13 @@ struct StemChannelView: View {
             Text("\(Int(volume * 100))")
                 .font(.custom("DotGothic16-Regular", size: 14))
                 .foregroundColor(.gray)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    Haptics.playClick()
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        volume = 1.0
+                    }
+                }
             
             CustomFader(value: $volume, label: title)
                 .frame(maxHeight: .infinity)

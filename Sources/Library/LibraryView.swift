@@ -8,15 +8,16 @@ struct LibraryView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     @Query(sort: \TrackModel.dateAdded, order: .reverse) private var tracks: [TrackModel]
     
+    @Binding var activeMenuTrackID: String?
     var onRenameTrack: ((TrackModel) -> Void)? = nil
     var onDeleteTrack: ((TrackModel) -> Void)? = nil
     
-    @State private var activeMenuTrackID: String? = nil
-    
     public init(
+        activeMenuTrackID: Binding<String?> = .constant(nil),
         onRenameTrack: ((TrackModel) -> Void)? = nil,
         onDeleteTrack: ((TrackModel) -> Void)? = nil
     ) {
+        self._activeMenuTrackID = activeMenuTrackID
         self.onRenameTrack = onRenameTrack
         self.onDeleteTrack = onDeleteTrack
     }
@@ -74,11 +75,13 @@ struct LibraryView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 6) {
-                            ForEach(tracks) { track in
+                            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                                let isCurrentMenuOpen = activeMenuTrackID == track.id
+                                let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
                                 TrackRowView(
                                     track: track,
                                     isActive: engineManager.currentTrackName == track.title.uppercased(),
-                                    isMenuOpen: activeMenuTrackID == track.id,
+                                    isMenuOpen: isCurrentMenuOpen,
                                     onToggleMenu: {
                                         if activeMenuTrackID == track.id {
                                             activeMenuTrackID = nil
@@ -101,7 +104,7 @@ struct LibraryView: View {
                                         onDeleteTrack?(track)
                                     }
                                 )
-                                .zIndex(activeMenuTrackID == track.id ? 999 : 1)
+                                .zIndex(zIndexValue)
                             }
                         }
                         .padding(.horizontal, 10)
@@ -266,10 +269,12 @@ struct TrackRowView: View {
                     }
                     .frame(width: 120)
                     .background(Color.black)
+                    .compositingGroup()
                     .border(Color.white.opacity(0.22), width: 1)
                     .overlay(CornerBrackets())
                     .offset(x: 0, y: 28) // Positioned directly below 3-dots button
                     .shadow(color: Color.black, radius: 10, x: 0, y: 4)
+                    .zIndex(1000)
                 }
             }
         }

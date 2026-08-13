@@ -41,8 +41,14 @@ struct CustomFader: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                Haptics.playClick()
+                withAnimation(.easeOut(duration: 0.12)) {
+                    value = 1.0
+                }
+            }
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 2)
                     .onChanged { drag in
                         if startValue == nil {
                             startValue = value

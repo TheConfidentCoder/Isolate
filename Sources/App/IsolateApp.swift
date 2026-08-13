@@ -213,6 +213,7 @@ struct ContentView: View {
     @State private var isShowingRenameModal = false
     @State private var isShowingDeleteModal = false
     @State private var renameText = ""
+    @State private var activeMenuTrackID: String? = nil
     @Environment(\.modelContext) private var modelContext
     @Environment(AudioEngineManager.self) private var engineManager
     
@@ -220,12 +221,15 @@ struct ContentView: View {
         HStack(spacing: 0) {
             if isSidebarVisible {
                 LibraryView(
+                    activeMenuTrackID: $activeMenuTrackID,
                     onRenameTrack: { track in
+                        activeMenuTrackID = nil
                         trackToRename = track
                         renameText = track.title
                         isShowingRenameModal = true
                     },
                     onDeleteTrack: { track in
+                        activeMenuTrackID = nil
                         trackToDelete = track
                         isShowingDeleteModal = true
                     }
@@ -241,6 +245,17 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.black)
+        .overlay {
+            // Global Tap-to-Dismiss for 3-Dots Dropdown Menu
+            if activeMenuTrackID != nil {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        activeMenuTrackID = nil
+                    }
+            }
+        }
         .overlay {
             // MARK: - Window-Centered Nothing-Style Rename Modal
             if isShowingRenameModal, let track = trackToRename {
