@@ -143,7 +143,7 @@ public actor DemucsEngine {
         }
         
         // 1. Decode and convert input audio to 44.1kHz Stereo Float32
-        let (fullSongBuffer, originalFrames) = try decodeAudioToStandardFormat(url: url)
+        let (fullSongBuffer, originalFrames) = try await decodeAudioToStandardFormat(url: url)
         guard originalFrames > 0,
               let inL = fullSongBuffer.floatChannelData?[0],
               let inR = fullSongBuffer.floatChannelData?[1] else {
@@ -263,8 +263,8 @@ public actor DemucsEngine {
             vDSP_vclr(inPtrL, 1, vDSP_Length(chunkSize * 2))
             
             // Copy normalized audio into MLMultiArray input
-            normPaddedL.withUnsafeBufferPointer { pL in
-                normPaddedR.withUnsafeBufferPointer { pR in
+            _ = normPaddedL.withUnsafeBufferPointer { pL in
+                _ = normPaddedR.withUnsafeBufferPointer { pR in
                     memcpy(inPtrL, pL.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
                     memcpy(inPtrR, pR.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
                 }
@@ -381,9 +381,9 @@ public actor DemucsEngine {
     
     // MARK: - Internal Signal Processing Helpers
     
-    private func decodeAudioToStandardFormat(url: URL) throws -> (AVAudioPCMBuffer, Int) {
+    private func decodeAudioToStandardFormat(url: URL) async throws -> (AVAudioPCMBuffer, Int) {
         // Attempt Method 1: AVAssetReader (Handles all MP3 VBR/CBR, ID3v2 tags with artwork, AAC, M4A, FLAC, WAV, AIFF)
-        if let result = try? decodeWithAssetReader(url: url) {
+        if let result = try? await decodeWithAssetReader(url: url) {
             return result
         }
         
@@ -395,9 +395,10 @@ public actor DemucsEngine {
         throw DemucsError.conversionFailed("Unable to decode audio file '\(url.lastPathComponent)'. Corrupt or unsupported format.")
     }
     
-    private func decodeWithAssetReader(url: URL) throws -> (AVAudioPCMBuffer, Int) {
+    private func decodeWithAssetReader(url: URL) async throws -> (AVAudioPCMBuffer, Int) {
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        guard let audioTrack = asset.tracks(withMediaType: .audio).first else {
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let audioTrack = audioTracks.first else {
             throw DemucsError.invalidAudioFormat
         }
         
@@ -428,7 +429,8 @@ public actor DemucsEngine {
         var audioSamplesL: [Float] = []
         var audioSamplesR: [Float] = []
         
-        let durationSecs = CMTimeGetSeconds(asset.duration)
+        let durationTime = (try? await asset.load(.duration)) ?? .zero
+        let durationSecs = CMTimeGetSeconds(durationTime)
         let estimatedCapacity = max(1024, Int(durationSecs * Self.sampleRate) + 44100)
         audioSamplesL.reserveCapacity(estimatedCapacity)
         audioSamplesR.reserveCapacity(estimatedCapacity)
@@ -486,10 +488,10 @@ public actor DemucsEngine {
         let destL = pcmBuffer.floatChannelData![0]
         let destR = pcmBuffer.floatChannelData![1]
         
-        audioSamplesL.withUnsafeBufferPointer { pL in
+        _ = audioSamplesL.withUnsafeBufferPointer { pL in
             memcpy(destL, pL.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
-        audioSamplesR.withUnsafeBufferPointer { pR in
+        _ = audioSamplesR.withUnsafeBufferPointer { pR in
             memcpy(destR, pR.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
         
