@@ -161,11 +161,18 @@ public actor DemucsEngine {
         let outputURLs = Self.stemNames.map { name in
             appSupport.appendingPathComponent("\(name).wav")
         }
+        let originalURL = appSupport.appendingPathComponent("original.wav")
         
-        // If all 4 stem files already exist in cache and have valid length, return immediately!
+        // If all 4 stem files + original.wav already exist in cache and have valid length, return immediately!
         var allCached = true
-        for stemURL in outputURLs {
+        let allRequiredURLs = outputURLs + [originalURL]
+        for stemURL in allRequiredURLs {
             if !FileManager.default.fileExists(atPath: stemURL.path) {
+                allCached = false
+                break
+            }
+            if let attr = try? FileManager.default.attributesOfItem(atPath: stemURL.path),
+               let size = attr[.size] as? Int64, size < 1024 {
                 allCached = false
                 break
             }
@@ -366,6 +373,26 @@ public actor DemucsEngine {
             let writer = try AVAudioFile(forWriting: stemURL, settings: diskSettings)
             try writer.write(from: outBuffer)
         }
+        
+        // Write original master track as 44.1kHz Stereo PCM Float32 for 100% sample-accurate master bypass
+        let originalBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(originalFrames))!
+        originalBuffer.frameLength = AVAudioFrameCount(originalFrames)
+        let origDestL = originalBuffer.floatChannelData![0]
+        let origDestR = originalBuffer.floatChannelData![1]
+        memcpy(origDestL, inL, originalFrames * MemoryLayout<Float>.size)
+        memcpy(origDestR, inR, originalFrames * MemoryLayout<Float>.size)
+        
+        let origSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: Self.sampleRate,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        let origWriter = try AVAudioFile(forWriting: originalURL, settings: origSettings)
+        try origWriter.write(from: originalBuffer)
         
         progressCallback(SplitProgressInfo(
             fraction: 1.0,

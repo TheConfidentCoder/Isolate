@@ -380,7 +380,19 @@ public final class AudioEngineManager: @unchecked Sendable {
     public func loadTrack(_ track: TrackModel) async {
         currentTrackID = track.id
         currentTrackName = track.title.uppercased()
-        if isPlaying { togglePlayback() }
+        
+        // 1. Immediately hard stop all 5 player nodes & flush audio queues
+        vocalPlayer.stop()
+        drumPlayer.stop()
+        bassPlayer.stop()
+        otherPlayer.stop()
+        originalPlayer.stop()
+        isPlaying = false
+        timer?.invalidate()
+        playbackProgress = 0.0
+        seekFrameOffset = 0
+        currentTimeString = "00:00 / -00:00"
+        clearVisualizers()
         
         extractMetadata(url: track.originalURL)
         
@@ -394,7 +406,14 @@ public final class AudioEngineManager: @unchecked Sendable {
             self.fileDrums = fDrums
             self.fileBass = fBass
             self.fileOther = fOther
-            self.audioFile = try? AVAudioFile(forReading: track.originalURL)
+            
+            // Check for original.wav in the same directory as vocalStemURL first
+            let originalWavURL = track.vocalStemURL.deletingLastPathComponent().appendingPathComponent("original.wav")
+            if let fOrig = try? AVAudioFile(forReading: originalWavURL) {
+                self.audioFile = fOrig
+            } else {
+                self.audioFile = try? AVAudioFile(forReading: track.originalURL)
+            }
             
             scheduleAllPlayers(at: nil)
             if !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled") {
@@ -402,6 +421,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             }
         } catch {
             print("Failed to load cached stems: \(error)")
+            showError("FAILED TO LOAD STEMS FOR '\(track.title.uppercased())'")
         }
     }
     
@@ -486,7 +506,14 @@ public final class AudioEngineManager: @unchecked Sendable {
             self.fileDrums = fDrums
             self.fileBass = fBass
             self.fileOther = fOther
-            self.audioFile = try? AVAudioFile(forReading: url)
+            
+            // Check for original.wav in stem folder first
+            let originalWavURL = stemURLs[0].deletingLastPathComponent().appendingPathComponent("original.wav")
+            if let fOrig = try? AVAudioFile(forReading: originalWavURL) {
+                self.audioFile = fOrig
+            } else {
+                self.audioFile = try? AVAudioFile(forReading: url)
+            }
             
             self.scheduleAllPlayers(at: nil)
             
@@ -586,12 +613,26 @@ public final class AudioEngineManager: @unchecked Sendable {
         Task {
             do {
                 let metadata = try await asset.load(.commonMetadata)
-                if let artworkItem = metadata.first(where: { $0.commonKey == .commonKeyArtwork }),
-                   let data = try await artworkItem.load(.value) as? Data {
-                    await MainActor.run { self.albumArt = NSImage(data: data) }
-                } else {
-                    await MainActor.run { self.albumArt = nil }
+                for item in metadata {
+                    if item.commonKey == .commonKeyArtwork {
+                        if let data = (try? await item.load(.value)) as? Data ?? item.dataValue {
+                            await MainActor.run { self.albumArt = NSImage(data: data) }
+                            return
+                        }
+                    }
                 }
+                
+                // Fallback for ID3 APIC frames in MP3s
+                let allMeta = try await asset.load(.metadata)
+                for item in allMeta {
+                    if item.commonKey == .commonKeyArtwork || item.identifier?.rawValue.contains("APIC") == true || item.identifier?.rawValue.contains("artwork") == true {
+                        if let data = (try? await item.load(.value)) as? Data ?? item.dataValue {
+                            await MainActor.run { self.albumArt = NSImage(data: data) }
+                            return
+                        }
+                    }
+                }
+                await MainActor.run { self.albumArt = nil }
             } catch {
                 await MainActor.run { self.albumArt = nil }
             }
@@ -721,8 +762,7 @@ public final class AudioEngineManager: @unchecked Sendable {
         guard let fVocals = fileVocals,
               let fDrums = fileDrums,
               let fBass = fileBass,
-              let fOther = fileOther,
-              let aFile = audioFile else { return }
+              let fOther = fileOther else { return }
         
         vocalPlayer.stop()
         drumPlayer.stop()
@@ -749,7 +789,9 @@ public final class AudioEngineManager: @unchecked Sendable {
         drumPlayer.scheduleFile(fDrums, at: time, completionHandler: nil)
         bassPlayer.scheduleFile(fBass, at: time, completionHandler: nil)
         otherPlayer.scheduleFile(fOther, at: time, completionHandler: nil)
-        originalPlayer.scheduleFile(aFile, at: time, completionHandler: nil)
+        if let aFile = audioFile {
+            originalPlayer.scheduleFile(aFile, at: time, completionHandler: nil)
+        }
     }
     
     private func onPlaybackEnded() {
@@ -800,13 +842,13 @@ public final class AudioEngineManager: @unchecked Sendable {
         timer?.invalidate()
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self = self,
-                  let file = self.audioFile,
+                  let fVocals = self.fileVocals,
                   let lastTime = self.vocalPlayer.lastRenderTime,
                   let playerTime = self.vocalPlayer.playerTime(forNodeTime: lastTime) else { return }
             
             let elapsedFrames = Double(playerTime.sampleTime) + Double(self.seekFrameOffset)
             let elapsed = max(0, elapsedFrames / playerTime.sampleRate)
-            let duration = Double(file.length) / file.processingFormat.sampleRate
+            let duration = Double(fVocals.length) / fVocals.processingFormat.sampleRate
             guard duration > 0 else { return }
             
             let progress = max(0, min(1, elapsed / duration))
@@ -831,8 +873,8 @@ public final class AudioEngineManager: @unchecked Sendable {
     
     @MainActor
     public func updateTimeString(for progress: Double) {
-        guard let file = audioFile else { return }
-        let duration = Double(file.length) / file.processingFormat.sampleRate
+        guard let fVocals = fileVocals else { return }
+        let duration = Double(fVocals.length) / fVocals.processingFormat.sampleRate
         guard duration > 0 else { return }
         let totalDurationSecs = Int(round(duration))
         let elapsedSecs = min(totalDurationSecs, Int(floor(duration * progress)))
@@ -850,8 +892,7 @@ public final class AudioEngineManager: @unchecked Sendable {
         guard let fVocals = fileVocals,
               let fDrums = fileDrums,
               let fBass = fileBass,
-              let fOther = fileOther,
-              let aFile = audioFile else { return }
+              let fOther = fileOther else { return }
         
         let wasPlaying = isPlaying
         
@@ -861,7 +902,7 @@ public final class AudioEngineManager: @unchecked Sendable {
         otherPlayer.stop()
         originalPlayer.stop()
         
-        let totalFrames = aFile.length
+        let totalFrames = fVocals.length
         let targetFrame = AVAudioFramePosition(Double(totalFrames) * percentage)
         let framesToPlay = AVAudioFrameCount(max(0, totalFrames - targetFrame))
         
@@ -879,7 +920,9 @@ public final class AudioEngineManager: @unchecked Sendable {
         drumPlayer.scheduleSegment(fDrums, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         bassPlayer.scheduleSegment(fBass, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
         otherPlayer.scheduleSegment(fOther, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
-        originalPlayer.scheduleSegment(aFile, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
+        if let aFile = audioFile {
+            originalPlayer.scheduleSegment(aFile, startingFrame: targetFrame, frameCount: framesToPlay, at: nil, completionHandler: nil)
+        }
         
         self.playbackProgress = percentage
         self.updateTimeString(for: percentage)
