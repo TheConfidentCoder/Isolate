@@ -148,105 +148,49 @@ struct LibraryView: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else {
-                    GeometryReader { containerGeo in
-                        ZStack(alignment: .trailing) {
-                            ScrollView {
-                                VStack(spacing: 6) {
-                                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                                        let isCurrentMenuOpen = activeMenuTrackID == track.id
-                                        let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
-                                        TrackRowView(
-                                            track: track,
-                                            isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
-                                            isMenuOpen: isCurrentMenuOpen,
-                                            onToggleMenu: {
-                                                if activeMenuTrackID == track.id {
-                                                    activeMenuTrackID = nil
-                                                } else {
-                                                    activeMenuTrackID = track.id
-                                                }
-                                            },
-                                            onSelect: {
-                                                activeMenuTrackID = nil
-                                                Task {
-                                                    await engineManager.loadTrack(track)
-                                                }
-                                            },
-                                            onRename: {
-                                                activeMenuTrackID = nil
-                                                onRenameTrack?(track)
-                                            },
-                                            onDelete: {
-                                                activeMenuTrackID = nil
-                                                onDeleteTrack?(track)
-                                            }
-                                        )
-                                        .zIndex(zIndexValue)
-                                    }
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(
-                                    GeometryReader { contentGeo in
-                                        Color.clear
-                                            .preference(key: ContentHeightPreferenceKey.self, value: contentGeo.size.height)
-                                            .preference(key: ScrollOffsetPreferenceKey.self, value: contentGeo.frame(in: .named("LibraryScroll")).minY)
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                                let isCurrentMenuOpen = activeMenuTrackID == track.id
+                                let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
+                                TrackRowView(
+                                    track: track,
+                                    isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
+                                    isMenuOpen: isCurrentMenuOpen,
+                                    onToggleMenu: {
+                                        if activeMenuTrackID == track.id {
+                                            activeMenuTrackID = nil
+                                        } else {
+                                            activeMenuTrackID = track.id
+                                        }
+                                    },
+                                    onSelect: {
+                                        activeMenuTrackID = nil
+                                        Task {
+                                            await engineManager.loadTrack(track)
+                                        }
+                                    },
+                                    onRename: {
+                                        activeMenuTrackID = nil
+                                        onRenameTrack?(track)
+                                    },
+                                    onDelete: {
+                                        activeMenuTrackID = nil
+                                        onDeleteTrack?(track)
                                     }
                                 )
-                            }
-                            .coordinateSpace(name: "LibraryScroll")
-                            .scrollIndicators(.hidden) // Replaces default macOS scrollbar!
-                            
-                            // Custom Nothing Hardware Red LED Scrollbar (2.5pt wide, dark track, rounded micro-pill)
-                            if contentHeight > containerHeight && containerHeight > 0 {
-                                let trackHeight = max(10, containerHeight - 12)
-                                let thumbRatio = min(1.0, containerHeight / max(1, contentHeight))
-                                let thumbHeight = max(24.0, trackHeight * thumbRatio)
-                                let maxScroll = max(1.0, contentHeight - containerHeight)
-                                let currentProgress = max(0.0, min(1.0, -scrollOffset / maxScroll))
-                                let thumbOffset = currentProgress * (trackHeight - thumbHeight)
-                                
-                                ZStack(alignment: .top) {
-                                    // Dark track rail along the right edge
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(Color.white.opacity(0.06))
-                                        .frame(width: 2.5, height: trackHeight)
-                                    
-                                    // Discrete Nothing Red LED Thumb
-                                    RoundedRectangle(cornerRadius: 1.25)
-                                        .fill(Color.red)
-                                        .frame(width: 2.5, height: thumbHeight)
-                                        .offset(y: thumbOffset)
-                                        .shadow(color: Color.red.opacity(isScrolling || isScrollbarHovered || isDraggingScrollbar ? 0.6 : 0.0), radius: 4, x: 0, y: 0)
-                                }
-                                .frame(width: 8, height: trackHeight)
-                                .contentShape(Rectangle())
-                                .padding(.trailing, 3)
-                                .opacity((isScrolling || isScrollbarHovered || isDraggingScrollbar) ? 1.0 : 0.35)
-                                .animation(.easeInOut(duration: 0.2), value: isScrolling)
-                                .animation(.easeInOut(duration: 0.2), value: isScrollbarHovered)
-                                .onHover { hovering in
-                                    isScrollbarHovered = hovering
-                                }
+                                .zIndex(zIndexValue)
                             }
                         }
-                        .onPreferenceChange(ContentHeightPreferenceKey.self) { height in
-                            contentHeight = height
-                        }
-                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                            scrollOffset = offset
-                            triggerScrollActivity()
-                        }
-                        .onAppear {
-                            containerHeight = containerGeo.size.height
-                            recalculateTotalDuration()
-                        }
-                        .onChange(of: containerGeo.size.height) { _, newHeight in
-                            containerHeight = newHeight
-                        }
-                        .onChange(of: tracks.count) { _, _ in
-                            recalculateTotalDuration()
-                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(CustomScrollerModifier())
+                    }
+                    .onAppear {
+                        recalculateTotalDuration()
+                    }
+                    .onChange(of: tracks.count) { _, _ in
+                        recalculateTotalDuration()
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -519,17 +463,91 @@ struct TrackRowView: View {
     }
 }
 
-// MARK: - Scroll Position and Content Height Preference Keys
-struct ContentHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+// MARK: - Native AppKit Nothing OS Hardware Red LED Scroller
+public final class NothingScroller: NSScroller {
+    public override class var isCompatibleWithOverlayScrollers: Bool {
+        return true
+    }
+    
+    public override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat {
+        return 10.0
+    }
+    
+    public override func drawKnobSlot(in rect: NSRect, highlight flag: Bool) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        
+        let trackWidth: CGFloat = 2.5
+        let trackRect = CGRect(
+            x: rect.midX - (trackWidth / 2.0),
+            y: rect.minY + 6.0,
+            width: trackWidth,
+            height: max(0, rect.height - 12.0)
+        )
+        
+        let path = CGPath(roundedRect: trackRect, cornerWidth: 1.25, cornerHeight: 1.25, transform: nil)
+        context.addPath(path)
+        context.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.08))
+        context.fillPath()
+        
+        context.restoreGState()
+    }
+    
+    public override func drawKnob() {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        
+        let knobRect = rect(for: .knob)
+        guard knobRect.height > 0 else {
+            context.restoreGState()
+            return
+        }
+        
+        let thumbWidth: CGFloat = 2.5
+        let thumbHeight = max(24.0, knobRect.height - 8.0)
+        let thumbY = knobRect.minY + 4.0
+        let thumbRect = CGRect(
+            x: knobRect.midX - (thumbWidth / 2.0),
+            y: thumbY,
+            width: thumbWidth,
+            height: thumbHeight
+        )
+        
+        let path = CGPath(roundedRect: thumbRect, cornerWidth: 1.25, cornerHeight: 1.25, transform: nil)
+        context.addPath(path)
+        
+        // Nothing Hardware Red LED with subtle glow
+        context.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 0.95))
+        context.setShadow(offset: .zero, blur: 4.0, color: CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 0.6))
+        context.fillPath()
+        
+        context.restoreGState()
     }
 }
 
-struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+// MARK: - Enclosing NSScrollView Swapper
+struct CustomScrollerModifier: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            setupScroller(for: view)
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            setupScroller(for: nsView)
+        }
+    }
+    
+    private func setupScroller(for view: NSView) {
+        guard let scrollView = view.enclosingScrollView else { return }
+        scrollView.scrollerStyle = .overlay
+        scrollView.hasVerticalScroller = true
+        if !(scrollView.verticalScroller is NothingScroller) {
+            let customScroller = NothingScroller()
+            scrollView.verticalScroller = customScroller
+        }
     }
 }
