@@ -41,6 +41,7 @@ public final class AudioEngineManager: @unchecked Sendable {
     
     // MARK: - Playback State
     public var isPlaying = false
+    public var currentTrackID: String? = nil
     public var currentTrackName: String = "NO TRACK LOADED"
     public var albumArt: NSImage?
     public var playbackProgress: Double = 0.0
@@ -365,7 +366,15 @@ public final class AudioEngineManager: @unchecked Sendable {
     // MARK: - Loading & Splitting Audio
     
     @MainActor
+    public func updateTrackTitle(id: String, newTitle: String) {
+        if currentTrackID == id {
+            currentTrackName = newTitle.uppercased()
+        }
+    }
+    
+    @MainActor
     public func loadTrack(_ track: TrackModel) async {
+        currentTrackID = track.id
         currentTrackName = track.title.uppercased()
         if isPlaying { togglePlayback() }
         
@@ -421,6 +430,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.58 + 1.2)))
             
             await MainActor.run {
+                self.currentTrackID = url.path
                 self.currentTrackName = url.lastPathComponent.uppercased()
                 self.isSplitting = true
                 self.isCompilingModel = false

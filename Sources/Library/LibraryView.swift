@@ -85,7 +85,7 @@ struct LibraryView: View {
                                 let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
                                 TrackRowView(
                                     track: track,
-                                    isActive: engineManager.currentTrackName == track.title.uppercased(),
+                                    isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
                                     isMenuOpen: isCurrentMenuOpen,
                                     onToggleMenu: {
                                         if activeMenuTrackID == track.id {

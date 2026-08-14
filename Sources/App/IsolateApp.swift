@@ -387,11 +387,17 @@ struct ContentView: View {
                             isShowingRenameModal = false
                         },
                         onSave: { newTitle in
+                            let oldTitle = track.title
+                            let trackID = track.id
                             track.title = newTitle
                             try? modelContext.save()
-                            if engineManager.currentTrackName == track.title.uppercased() || engineManager.currentTrackName.contains(track.id) {
+                            if engineManager.currentTrackID == trackID ||
+                               engineManager.currentTrackName == oldTitle.uppercased() ||
+                               engineManager.currentTrackName == newTitle.uppercased() ||
+                               engineManager.currentTrackName.contains(oldTitle.uppercased()) {
                                 engineManager.currentTrackName = newTitle.uppercased()
                             }
+                            engineManager.updateTrackTitle(id: trackID, newTitle: newTitle)
                             isShowingRenameModal = false
                         }
                     )
