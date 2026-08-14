@@ -158,8 +158,14 @@ final class IsolateTests: XCTestCase {
         }
         
         var progressUpdates: [Double] = []
-        let stemURLs = try await DemucsEngine.shared.splitAudio(url: tempAudioURL) { info in
-            progressUpdates.append(info.fraction)
+        let stemURLs: [URL]
+        do {
+            stemURLs = try await DemucsEngine.shared.splitAudio(url: tempAudioURL) { info in
+                progressUpdates.append(info.fraction)
+            }
+        } catch DemucsError.modelNotFound(let msg) {
+            try? FileManager.default.removeItem(at: tempDir)
+            throw XCTSkip("Skipping model inference test in CI environment: \(msg)")
         }
         
         XCTAssertEqual(stemURLs.count, 4, "Must output 4 stems (vocals, drums, bass, other)")

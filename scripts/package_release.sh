@@ -38,7 +38,10 @@ APP_BUNDLE="$BUILD_DIR/Isolate.app"
 
 # 4. Embed CoreML Model & AppIcon into App Bundle Resources
 echo "🧠 Step 3/6: Embedding Demucs Neural Engine CoreML model & AppIcon..."
-MODEL_SOURCE="/Users/neokumar/Library/Application Support/Isolate/HTDemucs.mlmodelc"
+MODEL_SOURCE="$HOME/Library/Application Support/Isolate/HTDemucs.mlmodelc"
+if [ ! -d "$MODEL_SOURCE" ]; then
+    MODEL_SOURCE="/Users/neokumar/Library/Application Support/Isolate/HTDemucs.mlmodelc"
+fi
 if [ -d "$MODEL_SOURCE" ]; then
     cp -R "$MODEL_SOURCE" "$APP_BUNDLE/Contents/Resources/HTDemucs.mlmodelc"
     echo "   Embedded HTDemucs.mlmodelc (~287MB) into app bundle."
