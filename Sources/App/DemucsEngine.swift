@@ -382,6 +382,121 @@ public actor DemucsEngine {
     // MARK: - Internal Signal Processing Helpers
     
     private func decodeAudioToStandardFormat(url: URL) throws -> (AVAudioPCMBuffer, Int) {
+        // Attempt Method 1: AVAssetReader (Handles all MP3 VBR/CBR, ID3v2 tags with artwork, AAC, M4A, FLAC, WAV, AIFF)
+        if let result = try? decodeWithAssetReader(url: url) {
+            return result
+        }
+        
+        // Attempt Method 2: Chunked AVAudioFile + AVAudioConverter fallback
+        if let result = try? decodeWithAudioFile(url: url) {
+            return result
+        }
+        
+        throw DemucsError.conversionFailed("Unable to decode audio file '\(url.lastPathComponent)'. Corrupt or unsupported format.")
+    }
+    
+    private func decodeWithAssetReader(url: URL) throws -> (AVAudioPCMBuffer, Int) {
+        let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        guard let audioTrack = asset.tracks(withMediaType: .audio).first else {
+            throw DemucsError.invalidAudioFormat
+        }
+        
+        let reader = try AVAssetReader(asset: asset)
+        
+        // Output settings for 44.1kHz Stereo Linear PCM Float32 Non-Interleaved
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: Self.sampleRate,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        
+        let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else {
+            throw DemucsError.assetReaderFailed("Cannot add track output")
+        }
+        reader.add(output)
+        
+        guard reader.startReading() else {
+            throw DemucsError.assetReaderFailed(reader.error?.localizedDescription ?? "Start reading failed")
+        }
+        
+        var audioSamplesL: [Float] = []
+        var audioSamplesR: [Float] = []
+        
+        let durationSecs = CMTimeGetSeconds(asset.duration)
+        let estimatedCapacity = max(1024, Int(durationSecs * Self.sampleRate) + 44100)
+        audioSamplesL.reserveCapacity(estimatedCapacity)
+        audioSamplesR.reserveCapacity(estimatedCapacity)
+        
+        while reader.status == .reading {
+            guard let sampleBuffer = output.copyNextSampleBuffer() else { break }
+            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
+            
+            let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
+            guard numSamples > 0 else { continue }
+            
+            var lengthAtOffset = 0
+            var totalLength = 0
+            var dataPointer: UnsafeMutablePointer<Int8>?
+            
+            let status = CMBlockBufferGetDataPointer(
+                blockBuffer,
+                atOffset: 0,
+                lengthAtOffsetOut: &lengthAtOffset,
+                totalLengthOut: &totalLength,
+                dataPointerOut: &dataPointer
+            )
+            
+            guard status == noErr, let rawPtr = dataPointer else { continue }
+            
+            // Output is interleaved 2-channel Float32 (L, R, L, R, ...)
+            let floatPtr = UnsafeRawPointer(rawPtr).assumingMemoryBound(to: Float.self)
+            for i in 0..<numSamples {
+                audioSamplesL.append(floatPtr[i * 2])
+                audioSamplesR.append(floatPtr[i * 2 + 1])
+            }
+        }
+        
+        if reader.status == .failed {
+            throw DemucsError.assetReaderFailed(reader.error?.localizedDescription ?? "Reader failed mid-stream")
+        }
+        
+        let totalFrames = audioSamplesL.count
+        guard totalFrames > 0 else {
+            throw DemucsError.invalidAudioFormat
+        }
+        
+        let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Self.sampleRate,
+            channels: 2,
+            interleaved: false
+        )!
+        
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(totalFrames)) else {
+            throw DemucsError.conversionFailed("Failed to allocate destination PCM buffer")
+        }
+        pcmBuffer.frameLength = AVAudioFrameCount(totalFrames)
+        
+        let destL = pcmBuffer.floatChannelData![0]
+        let destR = pcmBuffer.floatChannelData![1]
+        
+        audioSamplesL.withUnsafeBufferPointer { pL in
+            memcpy(destL, pL.baseAddress!, totalFrames * MemoryLayout<Float>.size)
+        }
+        audioSamplesR.withUnsafeBufferPointer { pR in
+            memcpy(destR, pR.baseAddress!, totalFrames * MemoryLayout<Float>.size)
+        }
+        
+        return (pcmBuffer, totalFrames)
+    }
+    
+    private func decodeWithAudioFile(url: URL) throws -> (AVAudioPCMBuffer, Int) {
         let inFile = try AVAudioFile(forReading: url)
         let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -397,28 +512,38 @@ public actor DemucsEngine {
         converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
         converter.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
         
-        let ratio = Self.sampleRate / inFile.fileFormat.sampleRate
+        let ratio = Self.sampleRate / max(1.0, inFile.fileFormat.sampleRate)
         let estimatedFrames = AVAudioFrameCount(Double(inFile.length) * ratio) + 88200
         guard let fullBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: estimatedFrames) else {
             throw DemucsError.conversionFailed("Failed to allocate audio conversion buffer.")
         }
         
-        let fileFrames = max(1024, AVAudioFrameCount(inFile.length))
-        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inFile.processingFormat, frameCapacity: fileFrames) else {
-            throw DemucsError.conversionFailed("Failed to allocate input buffer.")
+        let chunkSize: AVAudioFrameCount = 65536
+        guard let chunkBuffer = AVAudioPCMBuffer(pcmFormat: inFile.processingFormat, frameCapacity: chunkSize) else {
+            throw DemucsError.conversionFailed("Failed to allocate input chunk buffer.")
         }
-        try inFile.read(into: inputBuffer)
         
-        var hasRead = false
         var convError: NSError? = nil
         converter.convert(to: fullBuffer, error: &convError) { inNumPackets, outStatus in
-            if hasRead {
+            do {
+                if inFile.framePosition >= inFile.length {
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                let remainingFrames = inFile.length - inFile.framePosition
+                let framesToRead = min(chunkSize, AVAudioFrameCount(remainingFrames))
+                if framesToRead == 0 {
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                chunkBuffer.frameLength = 0
+                try inFile.read(into: chunkBuffer, frameCount: framesToRead)
+                outStatus.pointee = .haveData
+                return chunkBuffer
+            } catch {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            outStatus.pointee = .haveData
-            hasRead = true
-            return inputBuffer
         }
         
         if let err = convError {

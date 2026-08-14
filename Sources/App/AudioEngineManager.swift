@@ -49,6 +49,10 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var currentTimeString: String = "00:00 / -00:00"
     public var isBypassed: Bool = false { didSet { applyVolumes() } }
     
+    // MARK: - Toast Error State
+    public var errorMessage: String? = nil
+    private var errorDismissTimer: Timer?
+    
     private var playbackSessionID = UUID()
     
     // MARK: - Stem Volumes, Mute, Solo (Default 1.0 = Unity Gain / 0 dB)
@@ -422,6 +426,10 @@ public final class AudioEngineManager: @unchecked Sendable {
     }
     
     public func loadAndSplitAudio(url: URL) async -> TrackData? {
+        let previousTrackID = self.currentTrackID
+        let previousTrackName = self.currentTrackName
+        let previousAlbumArt = self.albumArt
+        
         let task = Task<TrackData?, Error> { [weak self] in
             guard let self = self else { return nil }
             let asset = AVURLAsset(url: url)
@@ -521,8 +529,37 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.etaTimer = nil
                 self.isSplitting = false
                 self.splitProgress = 0.0
+                // Restore previous state if splitting failed
+                self.currentTrackID = previousTrackID
+                self.currentTrackName = previousTrackName
+                self.albumArt = previousAlbumArt
+                
+                self.showError("IMPORT FAILED: \(url.lastPathComponent.uppercased()) • UNABLE TO DECODE AUDIO")
+                Haptics.playClick()
             }
             return nil
+        }
+    }
+    
+    @MainActor
+    public func showError(_ message: String) {
+        self.errorMessage = message
+        errorDismissTimer?.invalidate()
+        errorDismissTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    self?.errorMessage = nil
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    public func dismissError() {
+        errorDismissTimer?.invalidate()
+        errorDismissTimer = nil
+        withAnimation(.easeInOut(duration: 0.25)) {
+            self.errorMessage = nil
         }
     }
     

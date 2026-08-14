@@ -177,7 +177,17 @@ struct LibraryView: View {
     
     private func importTrack() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio]
+        panel.allowedContentTypes = [
+            .audio,
+            .mp3,
+            .mpeg4Audio,
+            .wav,
+            .aiff,
+            UTType(filenameExtension: "flac") ?? .audio,
+            UTType(filenameExtension: "alac") ?? .audio,
+            UTType(filenameExtension: "aac") ?? .audio,
+            UTType(filenameExtension: "caf") ?? .audio
+        ]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         

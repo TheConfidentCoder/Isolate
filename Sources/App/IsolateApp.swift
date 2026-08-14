@@ -477,6 +477,26 @@ struct ContentView: View {
                     )
                 }
             }
+            
+            // MARK: - Floating Nothing Hardware Error Toast
+            if let errorMsg = engineManager.errorMessage {
+                VStack {
+                    ErrorToastCard(
+                        message: errorMsg,
+                        onDismiss: {
+                            engineManager.dismissError()
+                        }
+                    )
+                    .padding(.top, 16)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
+                    
+                    Spacer()
+                }
+                .zIndex(9999)
+            }
         }
         .onAppear {
             AppMoveHelper.shared.checkLocationOnStartup()
@@ -930,5 +950,51 @@ struct WindowAccessor: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
         }
+    }
+}
+
+// MARK: - Floating Nothing Hardware Error Toast Card
+struct ErrorToastCard: View {
+    let message: String
+    let onDismiss: () -> Void
+    @State private var isCloseHovered = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.red)
+                
+                Text(message)
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            }
+            
+            Button(action: {
+                Haptics.playClick()
+                onDismiss()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isCloseHovered ? .white : .gray)
+                    .padding(5)
+                    .background(isCloseHovered ? Color.white.opacity(0.15) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                isCloseHovered = hovering
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black)
+        .compositingGroup()
+        .border(Color.red.opacity(0.8), width: 1)
+        .overlay(CornerBrackets())
+        .shadow(color: Color.red.opacity(0.3), radius: 14, x: 0, y: 4)
     }
 }
