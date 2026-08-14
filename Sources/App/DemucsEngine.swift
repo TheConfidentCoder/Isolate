@@ -270,10 +270,10 @@ public actor DemucsEngine {
             vDSP_vclr(inPtrL, 1, vDSP_Length(chunkSize * 2))
             
             // Copy normalized audio into MLMultiArray input
-            _ = normPaddedL.withUnsafeBufferPointer { pL in
-                _ = normPaddedR.withUnsafeBufferPointer { pR in
-                    memcpy(inPtrL, pL.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
-                    memcpy(inPtrR, pR.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
+            normPaddedL.withUnsafeBufferPointer { (pL: UnsafeBufferPointer<Float>) -> Void in
+                normPaddedR.withUnsafeBufferPointer { (pR: UnsafeBufferPointer<Float>) -> Void in
+                    _ = memcpy(inPtrL, pL.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
+                    _ = memcpy(inPtrR, pR.baseAddress!.advanced(by: chunkStart), readFrames * MemoryLayout<Float>.size)
                 }
             }
             
@@ -515,11 +515,11 @@ public actor DemucsEngine {
         let destL = pcmBuffer.floatChannelData![0]
         let destR = pcmBuffer.floatChannelData![1]
         
-        audioSamplesL.withUnsafeBufferPointer { pL in
-            memcpy(destL, pL.baseAddress!, totalFrames * MemoryLayout<Float>.size)
+        audioSamplesL.withUnsafeBufferPointer { (pL: UnsafeBufferPointer<Float>) -> Void in
+            _ = memcpy(destL, pL.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
-        audioSamplesR.withUnsafeBufferPointer { pR in
-            memcpy(destR, pR.baseAddress!, totalFrames * MemoryLayout<Float>.size)
+        audioSamplesR.withUnsafeBufferPointer { (pR: UnsafeBufferPointer<Float>) -> Void in
+            _ = memcpy(destR, pR.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
         
         return (pcmBuffer, totalFrames)

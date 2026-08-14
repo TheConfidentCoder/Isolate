@@ -80,12 +80,13 @@ struct LibraryView: View {
     }
     
     private func recalculateTotalDuration() {
+        let urlPairs: [(vocal: URL, original: URL)] = tracks.map { ($0.vocalStemURL, $0.originalURL) }
         Task.detached(priority: .userInitiated) {
             var totalSecs: Double = 0.0
-            for track in tracks {
-                if let file = try? AVAudioFile(forReading: track.vocalStemURL) {
+            for pair in urlPairs {
+                if let file = try? AVAudioFile(forReading: pair.vocal) {
                     totalSecs += Double(file.length) / file.processingFormat.sampleRate
-                } else if let file = try? AVAudioFile(forReading: track.originalURL) {
+                } else if let file = try? AVAudioFile(forReading: pair.original) {
                     totalSecs += Double(file.length) / file.processingFormat.sampleRate
                 }
             }
