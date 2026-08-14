@@ -111,7 +111,9 @@ public struct PlayerView: View {
                         isSoloed: $engine.vocalSolo,
                         eqMagnitudes: engine.vocalEQMagnitudes,
                         isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying
+                        isPlaying: engine.isPlaying,
+                        onToggleMute: { toggleMute(0) },
+                        onToggleSolo: { toggleSolo(0) }
                     )
                     StemChannelView(
                         title: "DRUMS",
@@ -120,7 +122,9 @@ public struct PlayerView: View {
                         isSoloed: $engine.drumSolo,
                         eqMagnitudes: engine.drumEQMagnitudes,
                         isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying
+                        isPlaying: engine.isPlaying,
+                        onToggleMute: { toggleMute(1) },
+                        onToggleSolo: { toggleSolo(1) }
                     )
                     StemChannelView(
                         title: "BASS",
@@ -129,7 +133,9 @@ public struct PlayerView: View {
                         isSoloed: $engine.bassSolo,
                         eqMagnitudes: engine.bassEQMagnitudes,
                         isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying
+                        isPlaying: engine.isPlaying,
+                        onToggleMute: { toggleMute(2) },
+                        onToggleSolo: { toggleSolo(2) }
                     )
                     StemChannelView(
                         title: "OTHER",
@@ -138,7 +144,9 @@ public struct PlayerView: View {
                         isSoloed: $engine.otherSolo,
                         eqMagnitudes: engine.otherEQMagnitudes,
                         isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying
+                        isPlaying: engine.isPlaying,
+                        onToggleMute: { toggleMute(3) },
+                        onToggleSolo: { toggleSolo(3) }
                     )
                 }
                 .padding(.horizontal, 24)
@@ -167,72 +175,12 @@ public struct PlayerView: View {
     
     private func toggleMute(_ index: Int) {
         Haptics.playClick()
-        switch index {
-        case 0:
-            if engineManager.vocalMuted {
-                engineManager.vocalMuted = false
-            } else {
-                engineManager.vocalMuted = true
-                engineManager.vocalSolo = false
-            }
-        case 1:
-            if engineManager.drumMuted {
-                engineManager.drumMuted = false
-            } else {
-                engineManager.drumMuted = true
-                engineManager.drumSolo = false
-            }
-        case 2:
-            if engineManager.bassMuted {
-                engineManager.bassMuted = false
-            } else {
-                engineManager.bassMuted = true
-                engineManager.bassSolo = false
-            }
-        case 3:
-            if engineManager.otherMuted {
-                engineManager.otherMuted = false
-            } else {
-                engineManager.otherMuted = true
-                engineManager.otherSolo = false
-            }
-        default: break
-        }
+        engineManager.toggleMute(index)
     }
     
     private func toggleSolo(_ index: Int) {
         Haptics.playClick()
-        switch index {
-        case 0:
-            if engineManager.vocalSolo {
-                engineManager.vocalSolo = false
-            } else {
-                engineManager.vocalSolo = true
-                engineManager.vocalMuted = false
-            }
-        case 1:
-            if engineManager.drumSolo {
-                engineManager.drumSolo = false
-            } else {
-                engineManager.drumSolo = true
-                engineManager.drumMuted = false
-            }
-        case 2:
-            if engineManager.bassSolo {
-                engineManager.bassSolo = false
-            } else {
-                engineManager.bassSolo = true
-                engineManager.bassMuted = false
-            }
-        case 3:
-            if engineManager.otherSolo {
-                engineManager.otherSolo = false
-            } else {
-                engineManager.otherSolo = true
-                engineManager.otherMuted = false
-            }
-        default: break
-        }
+        engineManager.soloStem(index)
     }
 }
 
@@ -244,6 +192,8 @@ struct StemChannelView: View {
     let eqMagnitudes: [Float]
     let isAnySoloed: Bool
     let isPlaying: Bool
+    var onToggleMute: (() -> Void)? = nil
+    var onToggleSolo: (() -> Void)? = nil
     
     @State private var isMutedHovered = false
     @State private var isSoloedHovered = false
@@ -288,12 +238,12 @@ struct StemChannelView: View {
             HStack(spacing: 8) {
                 // MUTE BUTTON
                 Button(action: {
-                    Haptics.playClick()
-                    if isMuted {
-                        isMuted = false
+                    if let onToggleMute = onToggleMute {
+                        onToggleMute()
                     } else {
-                        isMuted = true
-                        isSoloed = false // Mutual Exclusivity: disables Solo
+                        Haptics.playClick()
+                        isMuted.toggle()
+                        if isMuted { isSoloed = false }
                     }
                 }) {
                     Text("M")
@@ -313,14 +263,14 @@ struct StemChannelView: View {
                     isMutedHovered = hovering
                 }
                 
-                // SOLO BUTTON
+                // SOLO BUTTON (Radio-Style Exclusive Solo)
                 Button(action: {
-                    Haptics.playClick()
-                    if isSoloed {
-                        isSoloed = false
+                    if let onToggleSolo = onToggleSolo {
+                        onToggleSolo()
                     } else {
-                        isSoloed = true
-                        isMuted = false // Mutual Exclusivity: disables Mute
+                        Haptics.playClick()
+                        isSoloed.toggle()
+                        if isSoloed { isMuted = false }
                     }
                 }) {
                     Text("S")

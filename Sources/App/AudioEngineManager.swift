@@ -321,6 +321,57 @@ public final class AudioEngineManager: @unchecked Sendable {
         applyChannel(otherVolume, otherMuted, otherSolo, otherMixer)
     }
     
+    // MARK: - Exclusive Radio-Style Stem Soloing & Muting
+    public func soloStem(_ index: Int) {
+        // 0: Vocals, 1: Drums, 2: Bass, 3: Other
+        let isCurrentlySoloed: Bool
+        switch index {
+        case 0: isCurrentlySoloed = vocalSolo
+        case 1: isCurrentlySoloed = drumSolo
+        case 2: isCurrentlySoloed = bassSolo
+        case 3: isCurrentlySoloed = otherSolo
+        default: isCurrentlySoloed = false
+        }
+        
+        if isCurrentlySoloed {
+            // Toggling off: Un-solo all stems, return to normal playback
+            vocalSolo = false
+            drumSolo = false
+            bassSolo = false
+            otherSolo = false
+        } else {
+            // Exclusive Solo: Only solo the selected stem, clear all other 3 stems
+            vocalSolo = (index == 0)
+            drumSolo = (index == 1)
+            bassSolo = (index == 2)
+            otherSolo = (index == 3)
+            
+            // Clear mute on the active soloed stem so audio is immediately heard
+            if index == 0 { vocalMuted = false }
+            if index == 1 { drumMuted = false }
+            if index == 2 { bassMuted = false }
+            if index == 3 { otherMuted = false }
+        }
+    }
+    
+    public func toggleMute(_ index: Int) {
+        switch index {
+        case 0:
+            vocalMuted.toggle()
+            if vocalMuted { vocalSolo = false }
+        case 1:
+            drumMuted.toggle()
+            if drumMuted { drumSolo = false }
+        case 2:
+            bassMuted.toggle()
+            if bassMuted { bassSolo = false }
+        case 3:
+            otherMuted.toggle()
+            if otherMuted { otherSolo = false }
+        default: break
+        }
+    }
+    
     private func processWaveform(buffer: AVAudioPCMBuffer, isMaster: Bool) {
         guard let channelData = buffer.floatChannelData?[0] else { return }
         let frameLength = Int(buffer.frameLength)
