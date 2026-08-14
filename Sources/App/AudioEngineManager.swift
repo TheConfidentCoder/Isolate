@@ -99,6 +99,7 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var totalChunkCount = 0
     public var etaRemainingString = "00:05"
     public var splitStatusMessage = "ANALYZING STEMS..."
+    public var liveSpeedSubtitle: String = "APPLE SILICON ANE • 0.98s / CHUNK • 5.1x REALTIME"
     private var etaTimer: Timer?
     private var targetEtaSeconds: Int = 0
     
@@ -431,17 +432,17 @@ public final class AudioEngineManager: @unchecked Sendable {
     @MainActor
     public func cancelSplitAudio() {
         guard isSplitting else { return }
+        splitStatusMessage = "CANCELLING IMPORT..."
+        etaRemainingString = "--:--"
         activeSplitTask?.cancel()
         activeSplitTask = nil
         etaTimer?.invalidate()
         etaTimer = nil
         isSplitting = false
         splitProgress = 0.0
-        splitStatusMessage = ""
         currentChunkNumber = 0
         totalChunkCount = 0
         targetEtaSeconds = 0
-        etaRemainingString = "00:00"
         Haptics.playClick()
     }
     
@@ -455,7 +456,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             let asset = AVURLAsset(url: url)
             let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
             let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
-            let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.58 + 1.2)))
+            let initialEtaSeconds = max(3, Int(round(Double(estimatedChunks) * 0.98 + 1.2)))
             
             await MainActor.run {
                 self.currentTrackID = url.path
@@ -467,6 +468,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.totalChunkCount = estimatedChunks
                 self.targetEtaSeconds = initialEtaSeconds
                 self.etaRemainingString = String(format: "%02d:%02d", initialEtaSeconds / 60, initialEtaSeconds % 60)
+                self.liveSpeedSubtitle = "APPLE SILICON ANE • 0.98s / CHUNK • 5.1x REALTIME"
                 self.splitStatusMessage = "DECODING AUDIO TRACK..."
                 if self.isPlaying { self.togglePlayback() }
                 self.startEtaCountdownTimer()
@@ -483,15 +485,24 @@ public final class AudioEngineManager: @unchecked Sendable {
                     self.splitStatusMessage = progressInfo.statusMessage
                     
                     let newEta = Int(round(progressInfo.estimatedRemainingSeconds))
-                    // Nudge target smoothly to prevent jumping
-                    if abs(newEta - self.targetEtaSeconds) > 3 {
-                        self.targetEtaSeconds = Int(round(0.35 * Double(newEta) + 0.65 * Double(self.targetEtaSeconds)))
-                    } else {
+                    // Strictly monotonic: Never increase targetEtaSeconds
+                    if newEta < self.targetEtaSeconds {
                         self.targetEtaSeconds = newEta
                     }
-                    let etaMins = self.targetEtaSeconds / 60
-                    let etaSecs = self.targetEtaSeconds % 60
-                    self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
+                    
+                    if progressInfo.fraction >= 0.95 {
+                        self.etaRemainingString = "FINALIZING..."
+                    } else {
+                        let etaMins = max(0, self.targetEtaSeconds) / 60
+                        let etaSecs = max(0, self.targetEtaSeconds) % 60
+                        self.etaRemainingString = String(format: "%02d:%02d", etaMins, etaSecs)
+                    }
+                    
+                    self.liveSpeedSubtitle = String(
+                        format: "APPLE SILICON ANE • %.2fs / CHUNK • %.1fx REALTIME",
+                        progressInfo.secondsPerChunk,
+                        progressInfo.realtimeMultiplier
+                    )
                 }
             }
             
@@ -596,11 +607,15 @@ public final class AudioEngineManager: @unchecked Sendable {
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.isSplitting else { return }
-                if self.targetEtaSeconds > 1 {
+                if self.splitProgress >= 0.95 {
+                    self.etaRemainingString = "FINALIZING..."
+                } else if self.targetEtaSeconds > 1 {
                     self.targetEtaSeconds -= 1
                     let mins = self.targetEtaSeconds / 60
                     let secs = self.targetEtaSeconds % 60
                     self.etaRemainingString = String(format: "%02d:%02d", mins, secs)
+                } else if self.targetEtaSeconds == 1 {
+                    self.etaRemainingString = "00:01"
                 }
             }
         }

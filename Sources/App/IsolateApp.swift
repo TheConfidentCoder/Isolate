@@ -219,7 +219,7 @@ struct SplittingProgressModal: View {
                         .frame(width: 6, height: 6)
                         .opacity(isBlinking ? 1.0 : 0.2)
                     
-                    Text(dynamicFooter)
+                    Text(engineManager.currentChunkNumber > 0 ? engineManager.liveSpeedSubtitle : dynamicFooter)
                         .font(.custom("DotGothic16-Regular", size: 12))
                         .foregroundColor(.gray.opacity(0.85))
                         .lineLimit(1)
@@ -234,7 +234,7 @@ struct SplittingProgressModal: View {
                     HStack(spacing: 8) {
                         Image(systemName: "xmark")
                             .font(.system(size: 11, weight: .bold))
-                        Text("CANCEL IMPORT")
+                        Text(engineManager.splitStatusMessage.contains("CANCEL") ? "CANCELLING..." : "CANCEL IMPORT")
                             .font(.custom("DotGothic16-Regular", size: 13))
                             .fontWeight(.bold)
                     }

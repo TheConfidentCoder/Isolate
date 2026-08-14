@@ -30,6 +30,28 @@ public struct SplitProgressInfo: Sendable {
     public let elapsedSeconds: Double
     public let estimatedRemainingSeconds: Double
     public let statusMessage: String
+    public let secondsPerChunk: Double
+    public let realtimeMultiplier: Double
+    
+    public init(
+        fraction: Double,
+        currentChunk: Int,
+        totalChunks: Int,
+        elapsedSeconds: Double,
+        estimatedRemainingSeconds: Double,
+        statusMessage: String,
+        secondsPerChunk: Double = 0.98,
+        realtimeMultiplier: Double = 5.1
+    ) {
+        self.fraction = fraction
+        self.currentChunk = currentChunk
+        self.totalChunks = totalChunks
+        self.elapsedSeconds = elapsedSeconds
+        self.estimatedRemainingSeconds = estimatedRemainingSeconds
+        self.statusMessage = statusMessage
+        self.secondsPerChunk = secondsPerChunk
+        self.realtimeMultiplier = realtimeMultiplier
+    }
 }
 
 public actor DemucsEngine {
@@ -196,7 +218,8 @@ public actor DemucsEngine {
         let hopSize = Self.hopSize
         let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
         
-        var smoothedETA: Double = Double(numChunks) * 0.58 + 1.2
+        let baselineSecsPerChunk: Double = 0.98
+        var smoothedETA: Double = (Double(numChunks) * baselineSecsPerChunk) + 1.2
         let elapsedDec = CACurrentMediaTime() - startTime
         
         progressCallback(SplitProgressInfo(
@@ -260,6 +283,7 @@ public actor DemucsEngine {
         
         // Stage 3: Sequential Pipelined Inference Loop (3% to 95%)
         let inferenceStartTime = CACurrentMediaTime()
+        
         for chunkIdx in 0..<numChunks {
             try Task.checkCancellation()
             let chunkStart = chunkIdx * hopSize
@@ -303,21 +327,33 @@ public actor DemucsEngine {
             let chunkProgress = Double(completedChunks) / Double(numChunks)
             let totalFraction = 0.03 + (0.92 * chunkProgress) // 0.03 -> 0.95
             
-            // Moving-Average Chunk Calibration: Measure exact Apple Silicon throughput
-            let inferenceElapsed = CACurrentMediaTime() - inferenceStartTime
-            let avgSecsPerChunk = max(0.20, inferenceElapsed / Double(completedChunks))
-            let remainingChunks = numChunks - completedChunks
-            let remainingSeconds = (Double(remainingChunks) * avgSecsPerChunk) + 1.2
+            let now = CACurrentMediaTime()
+            let inferenceElapsed = now - inferenceStartTime
             
-            smoothedETA = (chunkIdx == 0) ? remainingSeconds : (0.25 * remainingSeconds + 0.75 * smoothedETA)
+            // Prior-weighted Bayesian moving average (smooths out early warmup variations)
+            let priorWeight: Double = 3.0
+            let effectiveChunks = Double(completedChunks) + priorWeight
+            let effectiveTime = inferenceElapsed + (priorWeight * baselineSecsPerChunk)
+            let avgSecsPerChunk = max(0.20, effectiveTime / effectiveChunks)
+            
+            let remainingChunks = Double(numChunks - completedChunks)
+            let rawRemainingSeconds = (remainingChunks * avgSecsPerChunk) + 1.0
+            
+            // Strictly Monotonic: ETA is never allowed to increase
+            smoothedETA = min(smoothedETA, rawRemainingSeconds)
+            smoothedETA = max(1.0, smoothedETA)
+            
+            let realtimeMultiplier = max(0.1, 5.0 / max(0.1, avgSecsPerChunk))
             
             progressCallback(SplitProgressInfo(
                 fraction: totalFraction,
                 currentChunk: completedChunks,
                 totalChunks: numChunks,
-                elapsedSeconds: CACurrentMediaTime() - startTime,
-                estimatedRemainingSeconds: max(1.0, smoothedETA),
-                statusMessage: "SEPARATING STEMS (CHUNK \(completedChunks)/\(numChunks))"
+                elapsedSeconds: now - startTime,
+                estimatedRemainingSeconds: smoothedETA,
+                statusMessage: "SEPARATING STEMS (CHUNK \(completedChunks)/\(numChunks))",
+                secondsPerChunk: avgSecsPerChunk,
+                realtimeMultiplier: realtimeMultiplier
             ))
         }
         
@@ -334,7 +370,7 @@ public actor DemucsEngine {
             let stemName = Self.stemNames[stemIdx].uppercased()
             let stemFraction = 0.95 + (0.05 * (Double(stemIdx + 1) / 4.0))
             let writeElapsed = CACurrentMediaTime() - startTime
-            let remainingSecs = max(0.0, 1.2 * (1.0 - (Double(stemIdx + 1) / 4.0)))
+            let remainingSecs = max(0.0, 1.0 * (1.0 - (Double(stemIdx + 1) / 4.0)))
             
             progressCallback(SplitProgressInfo(
                 fraction: stemFraction,
@@ -342,7 +378,9 @@ public actor DemucsEngine {
                 totalChunks: numChunks,
                 elapsedSeconds: writeElapsed,
                 estimatedRemainingSeconds: remainingSecs,
-                statusMessage: "SAVING \(stemName) STEM..."
+                statusMessage: "SAVING \(stemName) STEM...",
+                secondsPerChunk: baselineSecsPerChunk,
+                realtimeMultiplier: 5.0 / baselineSecsPerChunk
             ))
             
             let stemL = stemAccumulators[stemIdx * 2]
