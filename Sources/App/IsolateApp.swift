@@ -390,18 +390,20 @@ struct ContentView: View {
                         }
                     )
                 }
-            } else if AppMoveHelper.shared.shouldShowMoveModal {
+            } else if AppMoveHelper.shared.shouldShowMoveModal && !engineManager.isSplitting {
                 // MARK: - Window-Centered Move to Applications Prompt
                 ZStack {
                     Color.black.opacity(0.85)
                         .ignoresSafeArea()
                         .onTapGesture {
+                            UserDefaults.standard.set(true, forKey: "hasDeclinedMoveToApplications")
                             AppMoveHelper.shared.shouldShowMoveModal = false
                         }
                     
                     MoveToApplicationsModalCard(
                         appMoveHelper: AppMoveHelper.shared,
                         onDismiss: {
+                            UserDefaults.standard.set(true, forKey: "hasDeclinedMoveToApplications")
                             AppMoveHelper.shared.shouldShowMoveModal = false
                         }
                     )

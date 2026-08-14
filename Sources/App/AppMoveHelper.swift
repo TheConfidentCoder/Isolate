@@ -23,11 +23,16 @@ public final class AppMoveHelper: ObservableObject {
     
     public func checkLocationOnStartup() {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { return }
+        return
         #endif
         
-        if !isRunningFromApplications {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        if UserDefaults.standard.bool(forKey: "hasDeclinedMoveToApplications") {
+            return
+        }
+        
+        // ONLY prompt if the user is running the app directly off a mounted disk image volume (/Volumes/...)
+        if isRunningFromDiskImage && !isRunningFromApplications {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.shouldShowMoveModal = true
             }
         }
