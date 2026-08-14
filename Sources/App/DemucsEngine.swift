@@ -338,11 +338,6 @@ public actor DemucsEngine {
             
             let remainingChunks = Double(numChunks - completedChunks)
             let rawRemainingSeconds = (remainingChunks * avgSecsPerChunk) + 1.0
-            
-            // Strictly Monotonic: ETA is never allowed to increase
-            smoothedETA = min(smoothedETA, rawRemainingSeconds)
-            smoothedETA = max(1.0, smoothedETA)
-            
             let realtimeMultiplier = max(0.1, 5.0 / max(0.1, avgSecsPerChunk))
             
             progressCallback(SplitProgressInfo(
@@ -350,7 +345,7 @@ public actor DemucsEngine {
                 currentChunk: completedChunks,
                 totalChunks: numChunks,
                 elapsedSeconds: now - startTime,
-                estimatedRemainingSeconds: smoothedETA,
+                estimatedRemainingSeconds: max(1.0, rawRemainingSeconds),
                 statusMessage: "SEPARATING STEMS (CHUNK \(completedChunks)/\(numChunks))",
                 secondsPerChunk: avgSecsPerChunk,
                 realtimeMultiplier: realtimeMultiplier
