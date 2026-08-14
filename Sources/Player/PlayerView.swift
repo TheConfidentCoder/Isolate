@@ -582,27 +582,26 @@ struct DynamicIslandDotWaveformView: View {
     let amplitudes: [Float]
     let isPlaying: Bool
     
-    // 7 Perceptual Frequency Bands (Sub-Bass, Bass, Low-Mid, Lead Vocals, High-Mid, Treble, Air)
+    // 7 Pure Isolated Perceptual Frequency Bands (Sub-Bass -> Bass -> Low-Mid -> Vocals -> High-Mid -> Treble -> Air)
     private var barAmplitudes: [CGFloat] {
         guard isPlaying else { return Array(repeating: 0.0, count: 7) }
         
         let magCount = magnitudes.count
-        let ampCount = amplitudes.count
         
-        // Define frequency bin ranges and perceptual gain multipliers
+        // Define isolated frequency bin ranges across the 32 FFT bins with tuned gain multipliers
         let bandConfigs: [(bins: [Int], gain: Float)] = [
-            ([0, 1, 2], 8.5),       // Sub-Bass & Kick
-            ([3, 4, 5], 11.0),      // Bassline & 808
-            ([6, 7, 8, 9], 15.0),   // Low-Mid / Snare Body / Guitars
-            ([10, 11, 12, 13, 14], 19.0), // Lead Vocals & Main Synths
-            ([15, 16, 17, 18, 19], 24.0), // High-Mid / Vocal Articulation
-            ([20, 21, 22, 23, 24], 30.0), // Presence & Treble
-            ([25, 26, 27, 28, 29], 38.0)  // Air & Cymbals Sparkle
+            ([0, 1], 8.5),             // Left Bar 0: Sub-Bass & Heavy Kick (20 - 120 Hz)
+            ([2, 3], 12.5),            // Left Bar 1: Basslines & 808s (120 - 300 Hz)
+            ([4, 5, 6], 17.0),         // Mid-Left Bar 2: Low-Mid / Snare / Guitar Body (300 - 700 Hz)
+            ([7, 8, 9, 10, 11], 24.0), // Center Bar 3: Lead Vocals & Main Melodies (700 - 1.8 kHz)
+            ([12, 13, 14, 15, 16, 17], 32.0), // Mid-Right Bar 4: High-Mid / Vocal Articulation (1.8 - 4.5 kHz)
+            ([18, 19, 20, 21, 22, 23, 24], 48.0), // Right Bar 5: Treble & Hi-Hats / Shakers (4.5 - 9.5 kHz)
+            ([25, 26, 27, 28, 29, 30, 31], 70.0)  // Far-Right Bar 6: Air & Cymbals Sparkle (9.5 - 20 kHz)
         ]
         
         var bars: [CGFloat] = []
         
-        for (i, config) in bandConfigs.enumerated() {
+        for config in bandConfigs {
             var sum: Float = 0.0
             var validBins = 0
             for bin in config.bins {
@@ -612,21 +611,16 @@ struct DynamicIslandDotWaveformView: View {
                 }
             }
             let avgMag = validBins > 0 ? (sum / Float(validBins)) : 0.0
+            let rawEnergy = avgMag * config.gain
             
-            // Mix with RMS amplitude for instant transient punch
-            var rmsVal: Float = 0.0
-            if ampCount > 0 {
-                let ampIdx = min(ampCount - 1, i * (ampCount / 7))
-                rmsVal = amplitudes[ampIdx]
+            // If quiet/empty or stem is lowered/muted, drop strictly to 0.0
+            if rawEnergy < 0.025 {
+                bars.append(0.0)
+            } else {
+                // Logarithmic power curve for high contrast
+                let power = pow(Double(min(1.0, rawEnergy)), 0.82)
+                bars.append(CGFloat(min(1.0, max(0.0, power))))
             }
-            
-            let combined = max(avgMag * config.gain, rmsVal * 1.8)
-            // Perceptual dynamic expansion: square root compression
-            let compressed = sqrt(max(0.0, min(1.0, combined)))
-            
-            // Lively active floor during playback (0.18) so it never sits dormant
-            let finalAmp = CGFloat(0.18 + compressed * 0.82)
-            bars.append(min(1.0, max(0.0, finalAmp)))
         }
         
         return bars
@@ -641,7 +635,9 @@ struct DynamicIslandDotWaveformView: View {
             ForEach(0..<7, id: \.self) { barIndex in
                 let amp = bars[barIndex]
                 // Number of blocks to expand above and below center (0 to 4)
-                let spread = isPlaying ? max(1, min(4, Int(round(amp * 4.2)))) : 0
+                // If amp <= 0.02 (quiet or stem lowered): spread = 0 -> only 1 single center dot
+                // If amp reaches peak: spread = 4 -> full 9 vertical dots
+                let spread = isPlaying ? (amp > 0.02 ? min(4, Int(ceil(amp * 4.0))) : 0) : 0
                 
                 VStack(spacing: 1.5) {
                     ForEach(0..<blockCount, id: \.self) { blockIndex in
@@ -649,11 +645,11 @@ struct DynamicIslandDotWaveformView: View {
                         let isLit = distance <= spread
                         
                         RoundedRectangle(cornerRadius: 0.6)
-                            .fill(isLit ? Color.red : Color.red.opacity(0.08))
+                            .fill(isLit ? Color.red : Color.red.opacity(0.07))
                             .frame(width: 4.5, height: 2.5)
                     }
                 }
-                .animation(.spring(response: 0.15, dampingFraction: 0.54, blendDuration: 0.05), value: amp)
+                .animation(.spring(response: 0.12, dampingFraction: 0.62, blendDuration: 0.03), value: amp)
             }
         }
         .frame(height: 36)
