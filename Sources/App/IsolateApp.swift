@@ -319,6 +319,7 @@ struct ContentView: View {
     @State private var activeMenuTrackID: String? = nil
     @Environment(\.modelContext) private var modelContext
     @Environment(AudioEngineManager.self) private var engineManager
+    @Query(sort: \TrackModel.dateAdded, order: .reverse) private var tracks: [TrackModel]
     
     var body: some View {
         HStack(spacing: 0) {
@@ -500,6 +501,32 @@ struct ContentView: View {
         }
         .onAppear {
             AppMoveHelper.shared.checkLocationOnStartup()
+            NowPlayingManager.shared.configure(
+                engineManager: engineManager,
+                playlistProvider: { tracks },
+                trackSelectHandler: { track in
+                    Task {
+                        await engineManager.loadTrack(track)
+                        if !engineManager.isPlaying {
+                            engineManager.togglePlayback()
+                        }
+                    }
+                }
+            )
+        }
+        .onChange(of: tracks) { _, newTracks in
+            NowPlayingManager.shared.configure(
+                engineManager: engineManager,
+                playlistProvider: { newTracks },
+                trackSelectHandler: { track in
+                    Task {
+                        await engineManager.loadTrack(track)
+                        if !engineManager.isPlaying {
+                            engineManager.togglePlayback()
+                        }
+                    }
+                }
+            )
         }
     }
 }

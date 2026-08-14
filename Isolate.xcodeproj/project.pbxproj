@@ -16,6 +16,7 @@
 		8795659D14EB49E0487CF201 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59B0F1BF366285DF7ED96856 /* PlayerView.swift */; };
 		95C2E3DA7EFB59D971F2F6E1 /* DotGothic16-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65D4E52007621CC6578509E0 /* DotGothic16-Regular.ttf */; };
 		A424654DA3598C87FECBA99E /* IsolateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51723840AA00CB3D59039A2 /* IsolateUITests.swift */; };
+		BD13B32036CBA957B6A8FB50 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A696B7978AB11ACA46D7592E /* NowPlayingManager.swift */; };
 		BF1A95B3725BFC8C84B3AA92 /* DemucsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FFF484DB9B227FEA9BFA72 /* DemucsEngine.swift */; };
 		CCA10CCFD58840F597E21121 /* IsolateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B54412E9E3F71B00BF34FB0 /* IsolateTests.swift */; };
 		EF40587C88F3A21DCBED178E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39417E3CC1D1DF6CF0E4656 /* SettingsView.swift */; };
@@ -50,6 +51,7 @@
 		7BEEC1EF4DD1E71AAEA9F300 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		8CEABFC996FE6B255FC50AD8 /* IsolateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IsolateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B54412E9E3F71B00BF34FB0 /* IsolateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsolateTests.swift; sourceTree = "<group>"; };
+		A696B7978AB11ACA46D7592E /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		A72591EB18E208F038A7760C /* CustomFader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomFader.swift; sourceTree = "<group>"; };
 		A8902F75890A1D02F662A2C4 /* AppMoveHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMoveHelper.swift; sourceTree = "<group>"; };
 		AC1A0F01EE97D0951555E052 /* IsolateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsolateApp.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */,
 				D7C71DE2440945DF04ED48AA /* Haptics.swift */,
 				AC1A0F01EE97D0951555E052 /* IsolateApp.swift */,
+				A696B7978AB11ACA46D7592E /* NowPlayingManager.swift */,
 				D39417E3CC1D1DF6CF0E4656 /* SettingsView.swift */,
 			);
 			path = App;
@@ -270,6 +273,7 @@
 				F26A92AD18BE6E579AC5EC40 /* Haptics.swift in Sources */,
 				161EC9862A7208CA69D028EC /* IsolateApp.swift in Sources */,
 				49F7C5966BB4966F7B02CE38 /* LibraryView.swift in Sources */,
+				BD13B32036CBA957B6A8FB50 /* NowPlayingManager.swift in Sources */,
 				8795659D14EB49E0487CF201 /* PlayerView.swift in Sources */,
 				EF40587C88F3A21DCBED178E /* SettingsView.swift in Sources */,
 				64DAA5BF14FB75131FF30C78 /* TrackModel.swift in Sources */,

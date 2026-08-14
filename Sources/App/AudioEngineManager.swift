@@ -43,11 +43,32 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var isPlaying = false
     public var currentTrackID: String? = nil
     public var currentTrackName: String = "NO TRACK LOADED"
+    public var trackTitle: String = ""
+    public var trackArtist: String = "Isolate"
+    public var trackAlbum: String = "4-Stem Neural Audio"
     public var albumArt: NSImage?
     public var playbackProgress: Double = 0.0
     public var seekFrameOffset: AVAudioFramePosition = 0
     public var currentTimeString: String = "00:00 / -00:00"
     public var isBypassed: Bool = false { didSet { applyVolumes() } }
+    
+    private var lastSyncedNowPlayingSec: Int = -1
+    
+    public var totalTrackDuration: Double? {
+        guard let fVocals = fileVocals else { return nil }
+        let duration = Double(fVocals.length) / fVocals.processingFormat.sampleRate
+        return duration > 0 ? duration : nil
+    }
+    
+    public var currentPlaybackTimeSeconds: Double? {
+        guard fileVocals != nil,
+              let lastTime = vocalPlayer.lastRenderTime,
+              let playerTime = vocalPlayer.playerTime(forNodeTime: lastTime) else {
+            return (playbackProgress > 0 && totalTrackDuration != nil) ? (playbackProgress * totalTrackDuration!) : 0.0
+        }
+        let elapsedFrames = Double(playerTime.sampleTime) + Double(seekFrameOffset)
+        return max(0, elapsedFrames / playerTime.sampleRate)
+    }
     
     // MARK: - Toast Error State
     public var errorMessage: String? = nil
@@ -201,6 +222,18 @@ public final class AudioEngineManager: @unchecked Sendable {
         }
         
         applyVolumes()
+        
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isPlaying {
+                    self.togglePlayback()
+                }
+                if !self.engine.isRunning {
+                    try? self.engine.start()
+                }
+            }
+        }
         
         do {
             try engine.start()
@@ -678,32 +711,85 @@ public final class AudioEngineManager: @unchecked Sendable {
     }
     
     private func extractMetadata(url: URL) {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         Task {
+            var foundTitle: String? = nil
+            var foundArtist: String? = nil
+            var foundAlbum: String? = nil
+            var foundArt: NSImage? = nil
+            
             do {
                 let metadata = try await asset.load(.commonMetadata)
                 for item in metadata {
                     if item.commonKey == .commonKeyArtwork {
                         if let data = (try? await item.load(.value)) as? Data {
-                            await MainActor.run { self.albumArt = NSImage(data: data) }
-                            return
+                            foundArt = NSImage(data: data)
+                        }
+                    } else if item.commonKey == .commonKeyTitle {
+                        if let titleStr = (try? await item.load(.value)) as? String {
+                            foundTitle = titleStr
+                        }
+                    } else if item.commonKey == .commonKeyArtist {
+                        if let artistStr = (try? await item.load(.value)) as? String {
+                            foundArtist = artistStr
+                        }
+                    } else if item.commonKey == .commonKeyAlbumName {
+                        if let albumStr = (try? await item.load(.value)) as? String {
+                            foundAlbum = albumStr
                         }
                     }
                 }
                 
-                // Fallback for ID3 APIC frames in MP3s
+                // Fallback for ID3 frames in MP3s
                 let allMeta = try await asset.load(.metadata)
                 for item in allMeta {
-                    if item.commonKey == .commonKeyArtwork || item.identifier?.rawValue.contains("APIC") == true || item.identifier?.rawValue.contains("artwork") == true {
+                    if foundArt == nil && (item.commonKey == .commonKeyArtwork || item.identifier?.rawValue.contains("APIC") == true || item.identifier?.rawValue.contains("artwork") == true) {
                         if let data = (try? await item.load(.value)) as? Data {
-                            await MainActor.run { self.albumArt = NSImage(data: data) }
-                            return
+                            foundArt = NSImage(data: data)
+                        }
+                    }
+                    if foundTitle == nil && (item.commonKey == .commonKeyTitle || item.identifier?.rawValue.contains("TIT2") == true || item.identifier?.rawValue.contains("title") == true) {
+                        if let str = (try? await item.load(.value)) as? String {
+                            foundTitle = str
+                        }
+                    }
+                    if foundArtist == nil && (item.commonKey == .commonKeyArtist || item.identifier?.rawValue.contains("TPE1") == true || item.identifier?.rawValue.contains("artist") == true) {
+                        if let str = (try? await item.load(.value)) as? String {
+                            foundArtist = str
+                        }
+                    }
+                    if foundAlbum == nil && (item.commonKey == .commonKeyAlbumName || item.identifier?.rawValue.contains("TALB") == true || item.identifier?.rawValue.contains("album") == true) {
+                        if let str = (try? await item.load(.value)) as? String {
+                            foundAlbum = str
                         }
                     }
                 }
-                await MainActor.run { self.albumArt = nil }
             } catch {
-                await MainActor.run { self.albumArt = nil }
+                // Fallbacks used below
+            }
+            
+            let finalArt = foundArt
+            let finalTitle = foundTitle ?? url.deletingPathExtension().lastPathComponent
+            let finalArtist = foundArtist ?? "Isolate"
+            let finalAlbum = foundAlbum ?? "4-Stem Neural Audio"
+            
+            await MainActor.run {
+                self.albumArt = finalArt
+                self.trackTitle = finalTitle
+                self.trackArtist = finalArtist
+                self.trackAlbum = finalAlbum
+                
+                let duration = self.totalTrackDuration ?? 0.0
+                let elapsed = self.currentPlaybackTimeSeconds ?? 0.0
+                NowPlayingManager.shared.updateNowPlayingInfo(
+                    title: self.trackTitle,
+                    artist: self.trackArtist,
+                    album: self.trackAlbum,
+                    artwork: self.albumArt,
+                    duration: duration,
+                    elapsed: elapsed,
+                    isPlaying: self.isPlaying
+                )
             }
         }
     }
@@ -888,9 +974,11 @@ public final class AudioEngineManager: @unchecked Sendable {
         Task { @MainActor in
             self.isPlaying = true
             self.startPlaybackTimer()
+            NowPlayingManager.shared.updateNowPlayingPlaybackState()
         }
     }
     
+    @MainActor
     public func togglePlayback() {
         if isPlaying {
             vocalPlayer.pause()
@@ -901,6 +989,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             timer?.invalidate()
             isPlaying = false
             clearVisualizers()
+            NowPlayingManager.shared.updateNowPlayingPlaybackState()
         } else {
             playSynced()
         }
@@ -934,6 +1023,11 @@ public final class AudioEngineManager: @unchecked Sendable {
                 let rMins = remainingSecs / 60
                 let rSecs = remainingSecs % 60
                 self.currentTimeString = String(format: "%02d:%02d / -%02d:%02d", mins, secs, rMins, rSecs)
+                
+                if elapsedSecs != self.lastSyncedNowPlayingSec {
+                    self.lastSyncedNowPlayingSec = elapsedSecs
+                    NowPlayingManager.shared.updateNowPlayingProgress(elapsed: elapsed, duration: duration)
+                }
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -995,6 +1089,8 @@ public final class AudioEngineManager: @unchecked Sendable {
         
         self.playbackProgress = percentage
         self.updateTimeString(for: percentage)
+        let duration = self.totalTrackDuration ?? 0.0
+        NowPlayingManager.shared.updateNowPlayingProgress(elapsed: duration * percentage, duration: duration)
         
         if wasPlaying {
             isPlaying = false

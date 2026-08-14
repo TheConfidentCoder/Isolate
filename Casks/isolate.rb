@@ -1,6 +1,6 @@
 cask "isolate" do
   version "1.0.0"
-  sha256 "13138dd2137972a4bc646ef3e0fdfa7c494a1599624e691b14ef64bc67213919"
+  sha256 "3b5ab070efc36e451b4a4412857d294c94e3d18e1b329981c008850d65e67c22"
 
   url "https://github.com/TheConfidentCoder/Isolate/releases/download/v#{version}/Isolate-v#{version}.dmg"
   name "Isolate"

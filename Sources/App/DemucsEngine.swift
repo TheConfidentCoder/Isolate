@@ -1,6 +1,6 @@
 import Foundation
 import CoreML
-import AVFoundation
+@preconcurrency import AVFoundation
 import Accelerate
 
 public enum DemucsError: LocalizedError, Sendable {
