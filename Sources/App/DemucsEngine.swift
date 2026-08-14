@@ -219,7 +219,7 @@ public actor DemucsEngine {
         let numChunks = Int(ceil(Double(paddedFrames - chunkSize) / Double(hopSize))) + 1
         
         let baselineSecsPerChunk: Double = 0.98
-        var smoothedETA: Double = (Double(numChunks) * baselineSecsPerChunk) + 1.2
+        let initialETA: Double = (Double(numChunks) * baselineSecsPerChunk) + 1.2
         let elapsedDec = CACurrentMediaTime() - startTime
         
         progressCallback(SplitProgressInfo(
@@ -227,7 +227,7 @@ public actor DemucsEngine {
             currentChunk: 0,
             totalChunks: numChunks,
             elapsedSeconds: elapsedDec,
-            estimatedRemainingSeconds: max(1.0, smoothedETA),
+            estimatedRemainingSeconds: max(1.0, initialETA),
             statusMessage: "PREPARING NEURAL ENGINE..."
         ))
         
