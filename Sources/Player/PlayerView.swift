@@ -356,44 +356,39 @@ struct StemDynamicWaveformView: View {
     let effectiveVolume: Double
     let isPlaying: Bool
     
-    // 11 frequency sampling bars across the stem spectrum with tailored gain
+    // Per-stem 7 calibrated acoustic frequency gains
+    private var bandGains: [Float] {
+        switch title {
+        case "VOCALS":
+            return [18.0, 24.0, 32.0, 42.0, 54.0, 68.0, 90.0]
+        case "DRUMS":
+            return [14.0, 18.0, 22.0, 30.0, 42.0, 58.0, 75.0]
+        case "BASS":
+            return [12.0, 14.0, 16.0, 20.0, 28.0, 38.0, 50.0]
+        case "OTHER":
+            return [18.0, 22.0, 28.0, 36.0, 48.0, 64.0, 82.0]
+        default:
+            return [20.0, 24.0, 30.0, 38.0, 48.0, 62.0, 80.0]
+        }
+    }
+    
     private var barAmplitudes: [CGFloat] {
-        guard isPlaying, effectiveVolume > 0.001 else {
-            return Array(repeating: 0.0, count: 11)
+        guard isPlaying, effectiveVolume > 0.001, !magnitudes.isEmpty else {
+            return Array(repeating: 0.0, count: 7)
         }
         
-        let magCount = magnitudes.count
-        let gainMultiplier: Float = {
-            switch title {
-            case "VOCALS": return 32.0
-            case "DRUMS": return 20.0
-            case "BASS": return 16.0
-            case "OTHER": return 36.0
-            default: return 24.0
-            }
-        }()
-        
+        let gains = bandGains
         var bars: [CGFloat] = []
-        let barCount = 11
-        let binsPerBar = max(1, magCount / barCount)
         
-        for i in 0..<barCount {
-            var sum: Float = 0.0
-            var count = 0
-            for j in 0..<binsPerBar {
-                let idx = i * binsPerBar + j
-                if idx < magCount {
-                    sum += magnitudes[idx]
-                    count += 1
-                }
-            }
-            let avgMag = count > 0 ? (sum / Float(count)) : 0.0
-            let rawScaled = avgMag * gainMultiplier * Float(effectiveVolume)
+        for i in 0..<7 {
+            let rawMag = i < magnitudes.count ? magnitudes[i] : 0.0
+            let gain = i < gains.count ? gains[i] : 25.0
+            let scaled = rawMag * gain * Float(effectiveVolume)
             
-            if rawScaled < 0.02 {
+            if scaled < 0.015 {
                 bars.append(0.0)
             } else {
-                let power = pow(Double(min(1.0, rawScaled)), 0.82)
+                let power = pow(Double(min(1.0, scaled)), 0.78)
                 bars.append(CGFloat(min(1.0, max(0.0, power))))
             }
         }
@@ -407,19 +402,19 @@ struct StemDynamicWaveformView: View {
         let centerIndex = 3
         let isMutedOrSilent = effectiveVolume <= 0.001 || !isPlaying
         
-        HStack(spacing: 3.5) {
-            ForEach(0..<11, id: \.self) { barIndex in
+        HStack(spacing: 5.0) {
+            ForEach(0..<7, id: \.self) { barIndex in
                 let amp = bars[barIndex]
-                let spread = (isPlaying && effectiveVolume > 0.001) ? (amp > 0.02 ? min(3, Int(ceil(amp * 3.0))) : 0) : 0
+                let spread = (isPlaying && effectiveVolume > 0.001) ? (amp > 0.015 ? min(3, Int(ceil(amp * 3.0))) : 0) : 0
                 
-                VStack(spacing: 1.5) {
+                VStack(spacing: 1.8) {
                     ForEach(0..<blockCount, id: \.self) { blockIndex in
                         let distance = abs(centerIndex - blockIndex)
                         let isLit = distance <= spread
                         
                         RoundedRectangle(cornerRadius: 0.6)
-                            .fill(isLit ? (isMutedOrSilent ? Color.red.opacity(0.35) : Color.red) : Color.red.opacity(0.06))
-                            .frame(width: 3.5, height: 2.2)
+                            .fill(isLit ? (isMutedOrSilent ? Color.red.opacity(0.35) : Color.red) : Color.red.opacity(0.07))
+                            .frame(width: 4.8, height: 2.3)
                     }
                 }
                 .animation(.spring(response: 0.12, dampingFraction: 0.62, blendDuration: 0.03), value: amp)

@@ -71,16 +71,20 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var originalWaveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
     
     public var masterEQMagnitudes: [Float] = Array(repeating: 0, count: 32)
-    public var vocalEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
-    public var drumEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
-    public var bassEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
-    public var otherEQMagnitudes: [Float] = Array(repeating: 0, count: 16)
+    public var vocalEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
+    public var drumEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
+    public var bassEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
+    public var otherEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
     
     private let fftAnalyzer = FFTAnalyzer(fftSize: 1024)
     
-    // Throttling timers for smooth 30fps visualizer animations
+    // Throttling timers for smooth 60fps visualizer animations per stem
     private var lastMasterUIUpdateTime: TimeInterval = 0
-    private var lastStemUIUpdateTime: TimeInterval = 0
+    private var lastOriginalWaveformUIUpdateTime: TimeInterval = 0
+    private var lastVocalUIUpdateTime: TimeInterval = 0
+    private var lastDrumUIUpdateTime: TimeInterval = 0
+    private var lastBassUIUpdateTime: TimeInterval = 0
+    private var lastOtherUIUpdateTime: TimeInterval = 0
     
     // MARK: - Splitting & Progress State
     public var isSplitting = false
@@ -201,29 +205,86 @@ public final class AudioEngineManager: @unchecked Sendable {
     private func computeStemFFT(buffer: AVAudioPCMBuffer, stem: Int) {
         guard let channelData = buffer.floatChannelData?[0] else { return }
         let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
-        var bands = [Float](repeating: 0, count: 16)
-        let binsPerBand = max(1, magnitudes.count / 16)
-        for i in 0..<16 {
+        guard !magnitudes.isEmpty else { return }
+        
+        var bands = [Float](repeating: 0, count: 7)
+        
+        // Helper to compute average magnitude in an FFT bin range [start, end]
+        func getBandEnergy(start: Int, end: Int) -> Float {
+            let clampedStart = max(0, min(start, magnitudes.count - 1))
+            let clampedEnd = max(clampedStart, min(end, magnitudes.count - 1))
             var sum: Float = 0
-            for j in 0..<binsPerBand {
-                let idx = i * binsPerBand + j
-                if idx < magnitudes.count { sum += magnitudes[idx] }
+            var count = 0
+            for idx in clampedStart...clampedEnd {
+                sum += magnitudes[idx]
+                count += 1
             }
-            bands[i] = sum / Float(binsPerBand)
+            return count > 0 ? (sum / Float(count)) : 0
+        }
+        
+        switch stem {
+        case 0: // VOCALS: Tuned to human vocal formants (150 Hz - 9 kHz)
+            bands[0] = getBandEnergy(start: 3, end: 7)     // 130 - 300 Hz (vocal warmth & chest resonance)
+            bands[1] = getBandEnergy(start: 7, end: 14)    // 300 - 600 Hz (vocal fundamental)
+            bands[2] = getBandEnergy(start: 14, end: 28)   // 600 - 1.2 kHz (first formant / body)
+            bands[3] = getBandEnergy(start: 28, end: 52)   // 1.2 - 2.2 kHz (second formant / vowel clarity)
+            bands[4] = getBandEnergy(start: 52, end: 85)   // 2.2 - 3.6 kHz (presence & speech projection)
+            bands[5] = getBandEnergy(start: 85, end: 135)  // 3.6 - 5.8 kHz (consonants / articulation)
+            bands[6] = getBandEnergy(start: 135, end: 220) // 5.8 - 9.5 kHz (air / breath)
+            
+        case 1: // DRUMS: Transient-optimized (Kick, Snare, Hi-hats, Cymbals)
+            bands[0] = getBandEnergy(start: 1, end: 2)     // 40 - 80 Hz (sub kick weight)
+            bands[1] = getBandEnergy(start: 2, end: 4)     // 80 - 160 Hz (kick punch)
+            bands[2] = getBandEnergy(start: 4, end: 9)     // 160 - 380 Hz (snare body / toms)
+            bands[3] = getBandEnergy(start: 9, end: 24)    // 380 - 1.0 kHz (boxiness / snare ring)
+            bands[4] = getBandEnergy(start: 24, end: 70)   // 1.0 - 3.0 kHz (snare snap & crack)
+            bands[5] = getBandEnergy(start: 70, end: 175)  // 3.0 - 7.5 kHz (hi-hat attack & ride)
+            bands[6] = getBandEnergy(start: 175, end: 350) // 7.5 - 15 kHz (cymbal sizzle & open hats)
+            
+        case 2: // BASS: Low-frequency weighted (808s, Sub, Bass guitar)
+            bands[0] = getBandEnergy(start: 1, end: 1)     // 30 - 55 Hz (deep sub-bass rumble)
+            bands[1] = getBandEnergy(start: 2, end: 2)     // 55 - 90 Hz (808 core)
+            bands[2] = getBandEnergy(start: 3, end: 4)     // 90 - 170 Hz (bass guitar fundamental)
+            bands[3] = getBandEnergy(start: 4, end: 6)     // 170 - 260 Hz (1st octave harmonic)
+            bands[4] = getBandEnergy(start: 6, end: 10)    // 260 - 430 Hz (warmth & body)
+            bands[5] = getBandEnergy(start: 10, end: 18)   // 430 - 770 Hz (growl & bite)
+            bands[6] = getBandEnergy(start: 18, end: 40)   // 770 - 1.7 kHz (fret noise & pick attack)
+            
+        case 3: // OTHER: Full musical range (Pianos, Guitars, Synths, FX)
+            bands[0] = getBandEnergy(start: 3, end: 6)     // 130 - 260 Hz (acoustic guitar / piano low)
+            bands[1] = getBandEnergy(start: 6, end: 14)    // 260 - 600 Hz (chord fundamentals)
+            bands[2] = getBandEnergy(start: 14, end: 30)   // 600 - 1.3 kHz (melody & synth leads)
+            bands[3] = getBandEnergy(start: 30, end: 60)   // 1.3 - 2.6 kHz (guitar bite & brass)
+            bands[4] = getBandEnergy(start: 60, end: 115)  // 2.6 - 5.0 kHz (bright synths & sparkle)
+            bands[5] = getBandEnergy(start: 115, end: 210) // 5.0 - 9.0 kHz (shimmer & bells)
+            bands[6] = getBandEnergy(start: 210, end: 370) // 9.0 - 16 kHz (reverb air & ambient space)
+            
+        default: break
         }
         
         let now = CACurrentMediaTime()
-        if now - self.lastStemUIUpdateTime > 0.016 {
-            self.lastStemUIUpdateTime = now
-            DispatchQueue.main.async {
-                switch stem {
-                case 0: self.vocalEQMagnitudes = bands
-                case 1: self.drumEQMagnitudes = bands
-                case 2: self.bassEQMagnitudes = bands
-                case 3: self.otherEQMagnitudes = bands
-                default: break
-                }
+        switch stem {
+        case 0:
+            if now - self.lastVocalUIUpdateTime > 0.016 {
+                self.lastVocalUIUpdateTime = now
+                DispatchQueue.main.async { self.vocalEQMagnitudes = bands }
             }
+        case 1:
+            if now - self.lastDrumUIUpdateTime > 0.016 {
+                self.lastDrumUIUpdateTime = now
+                DispatchQueue.main.async { self.drumEQMagnitudes = bands }
+            }
+        case 2:
+            if now - self.lastBassUIUpdateTime > 0.016 {
+                self.lastBassUIUpdateTime = now
+                DispatchQueue.main.async { self.bassEQMagnitudes = bands }
+            }
+        case 3:
+            if now - self.lastOtherUIUpdateTime > 0.016 {
+                self.lastOtherUIUpdateTime = now
+                DispatchQueue.main.async { self.otherEQMagnitudes = bands }
+            }
+        default: break
         }
     }
     
@@ -280,8 +341,8 @@ public final class AudioEngineManager: @unchecked Sendable {
                 }
             }
         } else {
-            if now - self.lastStemUIUpdateTime > 0.033 {
-                self.lastStemUIUpdateTime = now
+            if now - self.lastOriginalWaveformUIUpdateTime > 0.033 {
+                self.lastOriginalWaveformUIUpdateTime = now
                 DispatchQueue.main.async {
                     self.originalWaveformAmplitudes = newAmplitudes.map { min(max($0, 0.05), 1.0) }
                 }
@@ -294,10 +355,10 @@ public final class AudioEngineManager: @unchecked Sendable {
             self.masterWaveformAmplitudes = Array(repeating: 0.05, count: 30)
             self.originalWaveformAmplitudes = Array(repeating: 0.05, count: 30)
             self.masterEQMagnitudes = Array(repeating: 0, count: 32)
-            self.vocalEQMagnitudes = Array(repeating: 0, count: 16)
-            self.drumEQMagnitudes = Array(repeating: 0, count: 16)
-            self.bassEQMagnitudes = Array(repeating: 0, count: 16)
-            self.otherEQMagnitudes = Array(repeating: 0, count: 16)
+            self.vocalEQMagnitudes = Array(repeating: 0, count: 7)
+            self.drumEQMagnitudes = Array(repeating: 0, count: 7)
+            self.bassEQMagnitudes = Array(repeating: 0, count: 7)
+            self.otherEQMagnitudes = Array(repeating: 0, count: 7)
         }
     }
     
