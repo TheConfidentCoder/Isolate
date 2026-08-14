@@ -378,12 +378,13 @@ struct StemDynamicWaveformView: View {
         }
         
         let gains = bandGains
+        let sensitivity = Float(AppSettings.shared.waveformSensitivity)
         var bars: [CGFloat] = []
         
         for i in 0..<7 {
             let rawMag = i < magnitudes.count ? magnitudes[i] : 0.0
             let gain = i < gains.count ? gains[i] : 25.0
-            let scaled = rawMag * gain * Float(effectiveVolume)
+            let scaled = rawMag * gain * Float(effectiveVolume) * sensitivity
             
             if scaled < 0.015 {
                 bars.append(0.0)
@@ -688,7 +689,8 @@ struct DynamicIslandDotWaveformView: View {
                 }
             }
             let avgMag = validBins > 0 ? (sum / Float(validBins)) : 0.0
-            let rawEnergy = avgMag * config.gain
+            let sensitivity = Float(AppSettings.shared.waveformSensitivity)
+            let rawEnergy = avgMag * config.gain * sensitivity
             
             // If quiet/empty or stem is lowered/muted, drop strictly to 0.0
             if rawEnergy < 0.025 {

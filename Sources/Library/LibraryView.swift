@@ -11,15 +11,20 @@ struct LibraryView: View {
     @Binding var activeMenuTrackID: String?
     var onRenameTrack: ((TrackModel) -> Void)? = nil
     var onDeleteTrack: ((TrackModel) -> Void)? = nil
+    var onOpenSettings: (() -> Void)? = nil
+    
+    @State private var isSettingsHovered = false
     
     public init(
         activeMenuTrackID: Binding<String?> = .constant(nil),
         onRenameTrack: ((TrackModel) -> Void)? = nil,
-        onDeleteTrack: ((TrackModel) -> Void)? = nil
+        onDeleteTrack: ((TrackModel) -> Void)? = nil,
+        onOpenSettings: (() -> Void)? = nil
     ) {
         self._activeMenuTrackID = activeMenuTrackID
         self.onRenameTrack = onRenameTrack
         self.onDeleteTrack = onDeleteTrack
+        self.onOpenSettings = onOpenSettings
     }
     
     var body: some View {
@@ -117,6 +122,48 @@ struct LibraryView: View {
                         }
                     }
                 }
+                
+                Divider()
+                    .background(Color.white.opacity(0.12))
+                
+                // Bottom Footer: Track Count & Nothing-Styled Settings Button
+                HStack {
+                    Text("\(tracks.count) \(tracks.count == 1 ? "TRACK" : "TRACKS")")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(.gray.opacity(0.6))
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        Haptics.playClick()
+                        onOpenSettings?()
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("SETTINGS")
+                                .font(.custom("DotGothic16-Regular", size: 12))
+                                .fontWeight(.bold)
+                        }
+                        .foregroundColor(isSettingsHovered ? .white : .gray)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(isSettingsHovered ? Color.white.opacity(0.08) : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(isSettingsHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        if hovering && !isSettingsHovered { Haptics.playClick() }
+                        isSettingsHovered = hovering
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.95))
             }
             .background(Color.black.opacity(0.85))
             .contentShape(Rectangle())

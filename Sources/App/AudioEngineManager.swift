@@ -384,7 +384,9 @@ public final class AudioEngineManager: @unchecked Sendable {
             self.audioFile = try? AVAudioFile(forReading: track.originalURL)
             
             scheduleAllPlayers(at: nil)
-            playSynced()
+            if !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled") {
+                playSynced()
+            }
         } catch {
             print("Failed to load cached stems: \(error)")
         }

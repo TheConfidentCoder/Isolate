@@ -7,6 +7,7 @@ struct IsolateApp: App {
     @State private var engineManager = AudioEngineManager()
     @State private var isTargeted = false
     @State private var isShowingAboutModal = false
+    @State private var isShowingSettingsModal = false
     @Environment(\.modelContext) private var modelContext
     
     init() {
@@ -18,54 +19,63 @@ struct IsolateApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView(isShowingAboutModal: $isShowingAboutModal)
-                .overlay {
-                    if engineManager.isSplitting {
-                        SplittingProgressModal()
-                            .environment(engineManager)
-                    } else if isTargeted {
-                        // Drag & Drop Target Overlay
-                        ZStack {
-                            Color.black.opacity(0.85)
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.red, style: StrokeStyle(lineWidth: 4, dash: [10]))
-                                .padding(24)
-                            VStack(spacing: 20) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 64))
-                                    .foregroundColor(.red)
-                                Text("DROP AUDIO TO ISOLATE STEMS")
-                                    .font(.custom("DotGothic16-Regular", size: 32))
-                                    .foregroundColor(.red)
-                            }
+            ContentView(
+                isShowingAboutModal: $isShowingAboutModal,
+                isShowingSettingsModal: $isShowingSettingsModal
+            )
+            .overlay {
+                if engineManager.isSplitting {
+                    SplittingProgressModal()
+                        .environment(engineManager)
+                } else if isTargeted {
+                    // Drag & Drop Target Overlay
+                    ZStack {
+                        Color.black.opacity(0.85)
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.red, style: StrokeStyle(lineWidth: 4, dash: [10]))
+                            .padding(24)
+                        VStack(spacing: 20) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.system(size: 64))
+                            .foregroundColor(.red)
+                            Text("DROP AUDIO TO ISOLATE STEMS")
+                                .font(.custom("DotGothic16-Regular", size: 32))
+                                .foregroundColor(.red)
                         }
-                        .ignoresSafeArea()
                     }
+                    .ignoresSafeArea()
                 }
-                .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                    if let provider = providers.first {
-                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                            if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                                handleDroppedFile(url: url)
-                            } else if let url = item as? URL {
-                                handleDroppedFile(url: url)
-                            }
+            }
+            .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+                if let provider = providers.first {
+                    provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                        if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                            handleDroppedFile(url: url)
+                        } else if let url = item as? URL {
+                            handleDroppedFile(url: url)
                         }
-                        return true
                     }
-                    return false
+                    return true
                 }
-                .preferredColorScheme(.dark)
-                .frame(minWidth: 960, minHeight: 600)
-                .background(WindowAccessor())
-                .navigationTitle("")
-                .environment(engineManager)
+                return false
+            }
+            .preferredColorScheme(.dark)
+            .frame(minWidth: 960, minHeight: 600)
+            .background(WindowAccessor())
+            .navigationTitle("")
+            .environment(engineManager)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Isolate") {
                     isShowingAboutModal = true
                 }
+            }
+            CommandGroup(after: .appSettings) {
+                Button("Settings...") {
+                    isShowingSettingsModal = true
+                }
+                .keyboardShortcut(",", modifiers: [.command])
             }
         }
         .modelContainer(for: TrackModel.self)
@@ -299,6 +309,7 @@ struct ModalDotMatrixProgressBar: View {
 
 struct ContentView: View {
     @Binding var isShowingAboutModal: Bool
+    @Binding var isShowingSettingsModal: Bool
     @State private var isSidebarVisible = true
     @State private var trackToRename: TrackModel? = nil
     @State private var trackToDelete: TrackModel? = nil
@@ -324,6 +335,10 @@ struct ContentView: View {
                         activeMenuTrackID = nil
                         trackToDelete = track
                         isShowingDeleteModal = true
+                    },
+                    onOpenSettings: {
+                        activeMenuTrackID = nil
+                        isShowingSettingsModal = true
                     }
                 )
                 .frame(width: 270)
@@ -347,6 +362,14 @@ struct ContentView: View {
                 }
         }
         .background(Color.black)
+        .background {
+            // Global ⌘, Keyboard Shortcut for Settings
+            Button("") {
+                isShowingSettingsModal.toggle()
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+            .hidden()
+        }
         .overlay {
             // MARK: - Window-Centered Nothing-Style Rename Modal
             if isShowingRenameModal, let track = trackToRename {
@@ -396,6 +419,21 @@ struct ContentView: View {
                             modelContext.delete(track)
                             try? modelContext.save()
                             isShowingDeleteModal = false
+                        }
+                    )
+                }
+            } else if isShowingSettingsModal {
+                // MARK: - Window-Centered Nothing Hardware Settings & Shortcuts Modal
+                ZStack {
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            isShowingSettingsModal = false
+                        }
+                    
+                    SettingsModalCard(
+                        onDismiss: {
+                            isShowingSettingsModal = false
                         }
                     )
                 }

@@ -18,6 +18,7 @@
 		A424654DA3598C87FECBA99E /* IsolateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51723840AA00CB3D59039A2 /* IsolateUITests.swift */; };
 		BF1A95B3725BFC8C84B3AA92 /* DemucsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FFF484DB9B227FEA9BFA72 /* DemucsEngine.swift */; };
 		CCA10CCFD58840F597E21121 /* IsolateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B54412E9E3F71B00BF34FB0 /* IsolateTests.swift */; };
+		EF40587C88F3A21DCBED178E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39417E3CC1D1DF6CF0E4656 /* SettingsView.swift */; };
 		F0F7BC284EA97E34B007342C /* FFTAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */; };
 		F26A92AD18BE6E579AC5EC40 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C71DE2440945DF04ED48AA /* Haptics.swift */; };
 		F27D574EC6856B022932FB9D /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 7BEEC1EF4DD1E71AAEA9F300 /* AppIcon.icns */; };
@@ -52,6 +53,7 @@
 		A72591EB18E208F038A7760C /* CustomFader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomFader.swift; sourceTree = "<group>"; };
 		A8902F75890A1D02F662A2C4 /* AppMoveHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMoveHelper.swift; sourceTree = "<group>"; };
 		AC1A0F01EE97D0951555E052 /* IsolateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsolateApp.swift; sourceTree = "<group>"; };
+		D39417E3CC1D1DF6CF0E4656 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D7C71DE2440945DF04ED48AA /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		D9F18A0F03B33726F0C3D41F /* Isolate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Isolate.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E404CB7871E1A45DE1242859 /* TrackModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackModel.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				49A8F54BCDFECE3713F6E918 /* FFTAnalyzer.swift */,
 				D7C71DE2440945DF04ED48AA /* Haptics.swift */,
 				AC1A0F01EE97D0951555E052 /* IsolateApp.swift */,
+				D39417E3CC1D1DF6CF0E4656 /* SettingsView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -268,6 +271,7 @@
 				161EC9862A7208CA69D028EC /* IsolateApp.swift in Sources */,
 				49F7C5966BB4966F7B02CE38 /* LibraryView.swift in Sources */,
 				8795659D14EB49E0487CF201 /* PlayerView.swift in Sources */,
+				EF40587C88F3A21DCBED178E /* SettingsView.swift in Sources */,
 				64DAA5BF14FB75131FF30C78 /* TrackModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
