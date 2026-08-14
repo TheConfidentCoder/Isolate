@@ -22,10 +22,7 @@ public final class AppMoveHelper: ObservableObject {
     }
     
     public func checkLocationOnStartup() {
-        #if DEBUG
-        return
-        #endif
-        
+        #if !DEBUG
         if UserDefaults.standard.bool(forKey: "hasDeclinedMoveToApplications") {
             return
         }
@@ -36,6 +33,7 @@ public final class AppMoveHelper: ObservableObject {
                 self.shouldShowMoveModal = true
             }
         }
+        #endif
     }
     
     public func moveToApplications() {
