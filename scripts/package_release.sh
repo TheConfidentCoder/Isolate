@@ -95,8 +95,15 @@ rm -f "$TMP_DMG" "$FINAL_DMG"
 hdiutil create -srcfolder "$STAGING_DIR" -volname "Isolate" -fs HFS+ \
   -fsargs "-c c=64,a=16,e=16" -format UDRW -size 680m "$TMP_DMG" -quiet
 
+# Ensure clean unmount before attaching
+hdiutil detach "/Volumes/Isolate" -force 2>/dev/null || true
+
 # Mount the temporary DMG
-MOUNT_DIR=$(hdiutil attach -readwrite -noverify -noautoopen "$TMP_DMG" | egrep '/Volumes/' | awk '{print $3}')
+MOUNT_OUT=$(hdiutil attach -readwrite -noverify -noautoopen "$TMP_DMG")
+MOUNT_DIR=$(echo "$MOUNT_OUT" | grep -o '/Volumes/.*' | head -n 1)
+if [ -z "$MOUNT_DIR" ]; then
+    MOUNT_DIR="/Volumes/Isolate"
+fi
 echo "   Mounted temporary DMG at $MOUNT_DIR"
 
 # Configure Finder window layout using AppleScript

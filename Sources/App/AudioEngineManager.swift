@@ -160,7 +160,7 @@ public final class AudioEngineManager: @unchecked Sendable {
             }
             
             let now = CACurrentMediaTime()
-            if now - self.lastMasterUIUpdateTime > 0.033 {
+            if now - self.lastMasterUIUpdateTime > 0.016 {
                 self.lastMasterUIUpdateTime = now
                 DispatchQueue.main.async {
                     self.masterEQMagnitudes = bands

@@ -56,10 +56,10 @@ public final class AppMoveHelper: ObservableObject {
                 try? xattrProcess.run()
                 xattrProcess.waitUntilExit()
                 
-                let config = NSWorkspace.OpenConfiguration()
-                config.createsNewApplicationInstance = true
-                
                 await MainActor.run {
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.createsNewApplicationInstance = true
+                    
                     NSWorkspace.shared.openApplication(at: destURL, configuration: config) { _, error in
                         if let error = error {
                             print("Error launching moved app: \(error)")

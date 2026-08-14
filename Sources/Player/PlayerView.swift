@@ -582,27 +582,53 @@ struct DynamicIslandDotWaveformView: View {
     let amplitudes: [Float]
     let isPlaying: Bool
     
-    // 7 symmetric frequency / amplitude sampling bands (Bass -> Mid -> Highs)
+    // 7 Perceptual Frequency Bands (Sub-Bass, Bass, Low-Mid, Lead Vocals, High-Mid, Treble, Air)
     private var barAmplitudes: [CGFloat] {
         guard isPlaying else { return Array(repeating: 0.0, count: 7) }
         
         let magCount = magnitudes.count
         let ampCount = amplitudes.count
         
-        var bars: [CGFloat] = []
-        let indices = [2, 5, 9, 14, 19, 24, 28] // 7 distinct frequency bands
+        // Define frequency bin ranges and perceptual gain multipliers
+        let bandConfigs: [(bins: [Int], gain: Float)] = [
+            ([0, 1, 2], 8.5),       // Sub-Bass & Kick
+            ([3, 4, 5], 11.0),      // Bassline & 808
+            ([6, 7, 8, 9], 15.0),   // Low-Mid / Snare Body / Guitars
+            ([10, 11, 12, 13, 14], 19.0), // Lead Vocals & Main Synths
+            ([15, 16, 17, 18, 19], 24.0), // High-Mid / Vocal Articulation
+            ([20, 21, 22, 23, 24], 30.0), // Presence & Treble
+            ([25, 26, 27, 28, 29], 38.0)  // Air & Cymbals Sparkle
+        ]
         
-        for (i, binIdx) in indices.enumerated() {
-            var val: Float = 0.0
-            if binIdx < magCount {
-                val = magnitudes[binIdx] * 7.5
+        var bars: [CGFloat] = []
+        
+        for (i, config) in bandConfigs.enumerated() {
+            var sum: Float = 0.0
+            var validBins = 0
+            for bin in config.bins {
+                if bin < magCount {
+                    sum += magnitudes[bin]
+                    validBins += 1
+                }
             }
-            if i < ampCount {
-                val = max(val, amplitudes[i * max(1, ampCount / 7)] * 1.6)
+            let avgMag = validBins > 0 ? (sum / Float(validBins)) : 0.0
+            
+            // Mix with RMS amplitude for instant transient punch
+            var rmsVal: Float = 0.0
+            if ampCount > 0 {
+                let ampIdx = min(ampCount - 1, i * (ampCount / 7))
+                rmsVal = amplitudes[ampIdx]
             }
-            let clamped = min(max(CGFloat(val), 0.0), 1.0)
-            bars.append(clamped)
+            
+            let combined = max(avgMag * config.gain, rmsVal * 1.8)
+            // Perceptual dynamic expansion: square root compression
+            let compressed = sqrt(max(0.0, min(1.0, combined)))
+            
+            // Lively active floor during playback (0.18) so it never sits dormant
+            let finalAmp = CGFloat(0.18 + compressed * 0.82)
+            bars.append(min(1.0, max(0.0, finalAmp)))
         }
+        
         return bars
     }
     
@@ -615,7 +641,7 @@ struct DynamicIslandDotWaveformView: View {
             ForEach(0..<7, id: \.self) { barIndex in
                 let amp = bars[barIndex]
                 // Number of blocks to expand above and below center (0 to 4)
-                let spread = isPlaying ? max(0, min(4, Int(round(amp * 4.0)))) : 0
+                let spread = isPlaying ? max(1, min(4, Int(round(amp * 4.2)))) : 0
                 
                 VStack(spacing: 1.5) {
                     ForEach(0..<blockCount, id: \.self) { blockIndex in
@@ -623,11 +649,11 @@ struct DynamicIslandDotWaveformView: View {
                         let isLit = distance <= spread
                         
                         RoundedRectangle(cornerRadius: 0.6)
-                            .fill(isLit ? Color.red : Color.red.opacity(0.06))
+                            .fill(isLit ? Color.red : Color.red.opacity(0.08))
                             .frame(width: 4.5, height: 2.5)
                     }
                 }
-                .animation(.easeOut(duration: 0.06), value: amp)
+                .animation(.spring(response: 0.15, dampingFraction: 0.54, blendDuration: 0.05), value: amp)
             }
         }
         .frame(height: 36)
