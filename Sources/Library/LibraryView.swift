@@ -477,16 +477,15 @@ public final class NothingScroller: NSScroller {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         
-        let trackWidth: CGFloat = 2.5
+        let trackWidth: CGFloat = 2.0
         let trackRect = CGRect(
             x: rect.midX - (trackWidth / 2.0),
-            y: rect.minY + 6.0,
+            y: rect.minY + 4.0,
             width: trackWidth,
-            height: max(0, rect.height - 12.0)
+            height: max(0, rect.height - 8.0)
         )
         
-        let path = CGPath(roundedRect: trackRect, cornerWidth: 1.25, cornerHeight: 1.25, transform: nil)
-        context.addPath(path)
+        context.addRect(trackRect)
         context.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.08))
         context.fillPath()
         
@@ -503,9 +502,9 @@ public final class NothingScroller: NSScroller {
             return
         }
         
-        let thumbWidth: CGFloat = 2.5
-        let thumbHeight = max(24.0, knobRect.height - 8.0)
-        let thumbY = knobRect.minY + 4.0
+        let thumbWidth: CGFloat = 3.5
+        let thumbHeight = max(24.0, knobRect.height - 4.0)
+        let thumbY = knobRect.minY + 2.0
         let thumbRect = CGRect(
             x: knobRect.midX - (thumbWidth / 2.0),
             y: thumbY,
@@ -513,10 +512,8 @@ public final class NothingScroller: NSScroller {
             height: thumbHeight
         )
         
-        let path = CGPath(roundedRect: thumbRect, cornerWidth: 1.25, cornerHeight: 1.25, transform: nil)
-        context.addPath(path)
-        
-        // Nothing Hardware Red LED with subtle glow
+        // Crisp rectangular Nothing Hardware Red LED (0px corner radius)
+        context.addRect(thumbRect)
         context.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 0.95))
         context.setShadow(offset: .zero, blur: 4.0, color: CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 0.6))
         context.fillPath()

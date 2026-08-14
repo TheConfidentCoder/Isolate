@@ -9,12 +9,14 @@ public final class AppSettings {
     public var defaultExportFormat: String {
         didSet {
             UserDefaults.standard.set(defaultExportFormat, forKey: "defaultExportFormat")
+            UserDefaults.standard.synchronize()
         }
     }
     
     public var isHapticsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(!isHapticsEnabled, forKey: "isHapticsDisabled")
+            UserDefaults.standard.synchronize()
             if isHapticsEnabled {
                 Haptics.playClick()
             }
@@ -24,16 +26,26 @@ public final class AppSettings {
     public var isAutoPlayOnSelect: Bool {
         didSet {
             UserDefaults.standard.set(!isAutoPlayOnSelect, forKey: "isAutoPlayDisabled")
+            UserDefaults.standard.synchronize()
         }
     }
     
     public var waveformSensitivity: Double {
         didSet {
             UserDefaults.standard.set(waveformSensitivity, forKey: "waveformSensitivity")
+            UserDefaults.standard.synchronize()
         }
     }
     
     private init() {
+        self.defaultExportFormat = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? "WAV"
+        self.isHapticsEnabled = !UserDefaults.standard.bool(forKey: "isHapticsDisabled")
+        self.isAutoPlayOnSelect = !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled")
+        let savedSensitivity = UserDefaults.standard.double(forKey: "waveformSensitivity")
+        self.waveformSensitivity = savedSensitivity > 0 ? savedSensitivity : 1.0
+    }
+    
+    public func reloadFromStorage() {
         self.defaultExportFormat = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? "WAV"
         self.isHapticsEnabled = !UserDefaults.standard.bool(forKey: "isHapticsDisabled")
         self.isAutoPlayOnSelect = !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled")
@@ -55,7 +67,7 @@ struct SettingsModalCard: View {
     let onDismiss: () -> Void
     
     @State private var selectedTab: Int = 0 // 0 = Settings, 1 = Shortcuts
-    @State private var settings = AppSettings.shared
+    @Bindable private var settings = AppSettings.shared
     @State private var isCloseHovered = false
     @State private var isResetHovered = false
     
