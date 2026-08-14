@@ -102,33 +102,43 @@ public struct PlayerView: View {
                 // 4 Fluid Adaptive Stem Mixer Channels
                 HStack(spacing: 18) {
                     @Bindable var engine = engineManager
+                    let anySolo = engine.vocalSolo || engine.drumSolo || engine.bassSolo || engine.otherSolo
+                    
                     StemChannelView(
                         title: "VOCALS",
                         volume: $engine.vocalVolume,
                         isMuted: $engine.vocalMuted,
                         isSoloed: $engine.vocalSolo,
-                        eqMagnitudes: engine.vocalEQMagnitudes
+                        eqMagnitudes: engine.vocalEQMagnitudes,
+                        isAnySoloed: anySolo,
+                        isPlaying: engine.isPlaying
                     )
                     StemChannelView(
                         title: "DRUMS",
                         volume: $engine.drumVolume,
                         isMuted: $engine.drumMuted,
                         isSoloed: $engine.drumSolo,
-                        eqMagnitudes: engine.drumEQMagnitudes
+                        eqMagnitudes: engine.drumEQMagnitudes,
+                        isAnySoloed: anySolo,
+                        isPlaying: engine.isPlaying
                     )
                     StemChannelView(
                         title: "BASS",
                         volume: $engine.bassVolume,
                         isMuted: $engine.bassMuted,
                         isSoloed: $engine.bassSolo,
-                        eqMagnitudes: engine.bassEQMagnitudes
+                        eqMagnitudes: engine.bassEQMagnitudes,
+                        isAnySoloed: anySolo,
+                        isPlaying: engine.isPlaying
                     )
                     StemChannelView(
                         title: "OTHER",
                         volume: $engine.otherVolume,
                         isMuted: $engine.otherMuted,
                         isSoloed: $engine.otherSolo,
-                        eqMagnitudes: engine.otherEQMagnitudes
+                        eqMagnitudes: engine.otherEQMagnitudes,
+                        isAnySoloed: anySolo,
+                        isPlaying: engine.isPlaying
                     )
                 }
                 .padding(.horizontal, 24)
@@ -232,9 +242,19 @@ struct StemChannelView: View {
     @Binding var isMuted: Bool
     @Binding var isSoloed: Bool
     let eqMagnitudes: [Float]
+    let isAnySoloed: Bool
+    let isPlaying: Bool
     
     @State private var isMutedHovered = false
     @State private var isSoloedHovered = false
+    
+    private var effectiveVolume: Double {
+        if isAnySoloed {
+            return isSoloed ? volume : 0.0
+        } else {
+            return isMuted ? 0.0 : volume
+        }
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -242,9 +262,14 @@ struct StemChannelView: View {
                 .font(.custom("DotGothic16-Regular", size: 16))
                 .foregroundColor(.white)
             
-            // Mini Live EQ Visualizer per stem
-            StemMiniEQView(magnitudes: eqMagnitudes)
-                .frame(height: 24)
+            // Dynamic Island Symmetrical Dot-Matrix Waveform per stem
+            StemDynamicWaveformView(
+                title: title,
+                magnitudes: eqMagnitudes,
+                effectiveVolume: effectiveVolume,
+                isPlaying: isPlaying
+            )
+            .frame(height: 26)
             
             Text("\(Int(volume * 100))")
                 .font(.custom("DotGothic16-Regular", size: 14))
@@ -324,26 +349,83 @@ struct StemChannelView: View {
     }
 }
 
-struct StemMiniEQView: View {
+// MARK: - Dynamic Island Symmetrical Dot-Matrix Stem Waveform View
+struct StemDynamicWaveformView: View {
+    let title: String
     let magnitudes: [Float]
+    let effectiveVolume: Double
+    let isPlaying: Bool
     
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<magnitudes.count, id: \.self) { i in
-                let heightValue = min(1.0, CGFloat(magnitudes[i]) * 8.0)
-                let blocks = max(1, Int(heightValue * 6))
-                
-                VStack(spacing: 1) {
-                    Spacer(minLength: 0)
-                    ForEach(0..<blocks, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.red.opacity(0.85))
-                            .frame(width: 3, height: 2)
-                    }
+    // 11 frequency sampling bars across the stem spectrum with tailored gain
+    private var barAmplitudes: [CGFloat] {
+        guard isPlaying, effectiveVolume > 0.001 else {
+            return Array(repeating: 0.0, count: 11)
+        }
+        
+        let magCount = magnitudes.count
+        let gainMultiplier: Float = {
+            switch title {
+            case "VOCALS": return 32.0
+            case "DRUMS": return 20.0
+            case "BASS": return 16.0
+            case "OTHER": return 36.0
+            default: return 24.0
+            }
+        }()
+        
+        var bars: [CGFloat] = []
+        let barCount = 11
+        let binsPerBar = max(1, magCount / barCount)
+        
+        for i in 0..<barCount {
+            var sum: Float = 0.0
+            var count = 0
+            for j in 0..<binsPerBar {
+                let idx = i * binsPerBar + j
+                if idx < magCount {
+                    sum += magnitudes[idx]
+                    count += 1
                 }
-                .animation(.linear(duration: 0.04), value: magnitudes)
+            }
+            let avgMag = count > 0 ? (sum / Float(count)) : 0.0
+            let rawScaled = avgMag * gainMultiplier * Float(effectiveVolume)
+            
+            if rawScaled < 0.02 {
+                bars.append(0.0)
+            } else {
+                let power = pow(Double(min(1.0, rawScaled)), 0.82)
+                bars.append(CGFloat(min(1.0, max(0.0, power))))
             }
         }
+        
+        return bars
+    }
+    
+    var body: some View {
+        let bars = barAmplitudes
+        let blockCount = 7 // 7 vertical dots tall (center index 3, spread = 0 to 3)
+        let centerIndex = 3
+        let isMutedOrSilent = effectiveVolume <= 0.001 || !isPlaying
+        
+        HStack(spacing: 3.5) {
+            ForEach(0..<11, id: \.self) { barIndex in
+                let amp = bars[barIndex]
+                let spread = (isPlaying && effectiveVolume > 0.001) ? (amp > 0.02 ? min(3, Int(ceil(amp * 3.0))) : 0) : 0
+                
+                VStack(spacing: 1.5) {
+                    ForEach(0..<blockCount, id: \.self) { blockIndex in
+                        let distance = abs(centerIndex - blockIndex)
+                        let isLit = distance <= spread
+                        
+                        RoundedRectangle(cornerRadius: 0.6)
+                            .fill(isLit ? (isMutedOrSilent ? Color.red.opacity(0.35) : Color.red) : Color.red.opacity(0.06))
+                            .frame(width: 3.5, height: 2.2)
+                    }
+                }
+                .animation(.spring(response: 0.12, dampingFraction: 0.62, blendDuration: 0.03), value: amp)
+            }
+        }
+        .frame(height: 26)
     }
 }
 

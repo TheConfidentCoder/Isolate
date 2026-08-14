@@ -213,7 +213,7 @@ public final class AudioEngineManager: @unchecked Sendable {
         }
         
         let now = CACurrentMediaTime()
-        if now - self.lastStemUIUpdateTime > 0.033 {
+        if now - self.lastStemUIUpdateTime > 0.016 {
             self.lastStemUIUpdateTime = now
             DispatchQueue.main.async {
                 switch stem {

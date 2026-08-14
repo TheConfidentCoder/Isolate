@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct IsolateApp: App {
     @State private var engineManager = AudioEngineManager()
     @State private var isTargeted = false
+    @State private var isShowingAboutModal = false
     @Environment(\.modelContext) private var modelContext
     
     init() {
@@ -17,7 +18,7 @@ struct IsolateApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(isShowingAboutModal: $isShowingAboutModal)
                 .overlay {
                     if engineManager.isSplitting {
                         SplittingProgressModal()
@@ -59,6 +60,13 @@ struct IsolateApp: App {
                 .background(WindowAccessor())
                 .navigationTitle("")
                 .environment(engineManager)
+        }
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Isolate") {
+                    isShowingAboutModal = true
+                }
+            }
         }
         .modelContainer(for: TrackModel.self)
         .environment(engineManager)
@@ -290,6 +298,7 @@ struct ModalDotMatrixProgressBar: View {
 }
 
 struct ContentView: View {
+    @Binding var isShowingAboutModal: Bool
     @State private var isSidebarVisible = true
     @State private var trackToRename: TrackModel? = nil
     @State private var trackToDelete: TrackModel? = nil
@@ -390,6 +399,21 @@ struct ContentView: View {
                         }
                     )
                 }
+            } else if isShowingAboutModal {
+                // MARK: - Window-Centered Nothing Hardware About Modal
+                ZStack {
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            isShowingAboutModal = false
+                        }
+                    
+                    AboutModalCard(
+                        onDismiss: {
+                            isShowingAboutModal = false
+                        }
+                    )
+                }
             } else if AppMoveHelper.shared.shouldShowMoveModal && !engineManager.isSplitting {
                 // MARK: - Window-Centered Move to Applications Prompt
                 ZStack {
@@ -413,6 +437,172 @@ struct ContentView: View {
         .onAppear {
             AppMoveHelper.shared.checkLocationOnStartup()
         }
+    }
+}
+
+// MARK: - Nothing Hardware About Isolate Modal Card
+struct AboutModalCard: View {
+    let onDismiss: () -> Void
+    @State private var isCloseHovered = false
+    @State private var isGitHubHovered = false
+    
+    var body: some View {
+        VStack(spacing: 18) {
+            // Nothing Dot-Matrix App Icon Graphic
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(white: 0.08))
+                    .frame(width: 84, height: 84)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                    )
+                
+                // Stacked Square Pixel Stem Bars (White, Red, Red, White)
+                HStack(alignment: .bottom, spacing: 5) {
+                    VStack(spacing: 2) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            Rectangle().fill(Color.white).frame(width: 6, height: 4)
+                        }
+                    }
+                    VStack(spacing: 2) {
+                        ForEach(0..<8, id: \.self) { _ in
+                            Rectangle().fill(Color.red).frame(width: 6, height: 4)
+                        }
+                    }
+                    VStack(spacing: 2) {
+                        ForEach(0..<10, id: \.self) { _ in
+                            Rectangle().fill(Color.red).frame(width: 6, height: 4)
+                        }
+                    }
+                    VStack(spacing: 2) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            Rectangle().fill(Color.white).frame(width: 6, height: 4)
+                        }
+                    }
+                }
+                .padding(.bottom, 16)
+                .frame(width: 84, height: 84, alignment: .bottom)
+                
+                // Top-right Red Glowing Status Dot
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
+                    .padding(8)
+            }
+            .shadow(color: Color.red.opacity(0.25), radius: 12)
+            
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Text("ISOLATE")
+                        .font(.custom("DotGothic16-Regular", size: 24))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Text("v1.0.0")
+                        .font(.custom("DotGothic16-Regular", size: 13))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.red.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                        )
+                }
+                
+                Text("4-STEM DEMUCS NEURAL ENGINE ACCELERATOR")
+                    .font(.custom("DotGothic16-Regular", size: 11))
+                    .foregroundColor(.gray)
+                    .tracking(0.5)
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.horizontal, 8)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle().fill(Color.red).frame(width: 5, height: 5)
+                    Text("APPLE SILICON NEURAL ENGINE (ANE) ACCELERATION")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                HStack(spacing: 8) {
+                    Circle().fill(Color.red).frame(width: 5, height: 5)
+                    Text("60 FPS METAL & ACCELERATE DSP TELEMETRY")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                HStack(spacing: 8) {
+                    Circle().fill(Color.red).frame(width: 5, height: 5)
+                    Text("100% PRIVATE & OFFLINE AUDIO PROCESSING")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+            }
+            .padding(.horizontal, 12)
+            
+            HStack(spacing: 12) {
+                // GitHub Repository Link
+                Button(action: {
+                    Haptics.playClick()
+                    if let url = URL(string: "https://github.com/TheConfidentCoder/Isolate") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "link")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("GITHUB")
+                            .font(.custom("DotGothic16-Regular", size: 13))
+                            .fontWeight(.bold)
+                    }
+                    .foregroundColor(isGitHubHovered ? .white : .gray)
+                    .frame(width: 140, height: 36)
+                    .background(isGitHubHovered ? Color.white.opacity(0.12) : Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(isGitHubHovered ? Color.white : Color.gray.opacity(0.5), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering && !isGitHubHovered { Haptics.playClick() }
+                    isGitHubHovered = hovering
+                }
+                
+                // Close Button
+                Button(action: {
+                    Haptics.playClick()
+                    onDismiss()
+                }) {
+                    Text("CLOSE")
+                        .font(.custom("DotGothic16-Regular", size: 13))
+                        .fontWeight(.bold)
+                        .foregroundColor(.black)
+                        .frame(width: 120, height: 36)
+                        .background(isCloseHovered ? Color.white : Color.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering && !isCloseHovered { Haptics.playClick() }
+                    isCloseHovered = hovering
+                }
+            }
+            .padding(.top, 6)
+        }
+        .padding(24)
+        .frame(width: 440)
+        .background(Color.black)
+        .compositingGroup()
+        .border(Color.white.opacity(0.2), width: 1)
+        .overlay(CornerBrackets())
+        .shadow(color: Color.black, radius: 24, x: 0, y: 8)
     }
 }
 
