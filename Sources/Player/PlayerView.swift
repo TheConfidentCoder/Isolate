@@ -33,124 +33,8 @@ public struct PlayerView: View {
     public var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
-                // Top Header: Sidebar Toggle, 100x100 Hero Artwork, Track Title, Master Waveform & Spectrum
-                HStack(spacing: 18) {
-                    if let isSidebarVisible = isSidebarVisible {
-                        Button(action: {
-                            Haptics.playClick()
-                            withAnimation(nil) { // 0ms Instant Nothing Hardware Snap
-                                isSidebarVisible.wrappedValue.toggle()
-                            }
-                        }) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .stroke(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6), lineWidth: 1)
-                                    .frame(width: 18, height: 14)
-                                
-                                HStack(spacing: 2) {
-                                    Rectangle()
-                                        .fill(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6))
-                                        .frame(width: 4, height: 10)
-                                    Spacer()
-                                }
-                                .frame(width: 14, height: 10)
-                            }
-                            .frame(width: 28, height: 28)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    AlbumArtView(image: engineManager.albumArt)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: 26))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        HStack(spacing: 12) {
-                            Text(engineManager.isBypassed ? "SOURCE: ORIGINAL MASTER" : "SOURCE: 4-STEM ISOLATION")
-                                .font(.custom("DotGothic16-Regular", size: 12))
-                                .foregroundColor(engineManager.isBypassed ? .yellow : .gray)
-                            
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(engineManager.isPlaying ? Color.red : Color.gray)
-                                    .frame(width: 6, height: 6)
-                                
-                                Text(engineManager.isPlaying ? "ACTIVE" : "STANDBY")
-                                    .font(.custom("DotGothic16-Regular", size: 11))
-                                    .foregroundColor(engineManager.isPlaying ? .red : .gray)
-                            }
-                        }
-                    }
-                    
-                    Spacer(minLength: 20)
-                    
-                    DynamicIslandDotWaveformView(
-                        magnitudes: engineManager.masterEQMagnitudes,
-                        amplitudes: engineManager.masterWaveformAmplitudes,
-                        isPlaying: engineManager.isPlaying
-                    )
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 8)
-                
-                // 4 Fluid Adaptive Stem Mixer Channels
-                HStack(spacing: 18) {
-                    @Bindable var engine = engineManager
-                    let anySolo = engine.vocalSolo || engine.drumSolo || engine.bassSolo || engine.otherSolo
-                    
-                    StemChannelView(
-                        title: "VOCALS",
-                        volume: $engine.vocalVolume,
-                        isMuted: $engine.vocalMuted,
-                        isSoloed: $engine.vocalSolo,
-                        eqMagnitudes: engine.vocalEQMagnitudes,
-                        isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying,
-                        onToggleMute: { toggleMute(0) },
-                        onToggleSolo: { toggleSolo(0) }
-                    )
-                    StemChannelView(
-                        title: "DRUMS",
-                        volume: $engine.drumVolume,
-                        isMuted: $engine.drumMuted,
-                        isSoloed: $engine.drumSolo,
-                        eqMagnitudes: engine.drumEQMagnitudes,
-                        isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying,
-                        onToggleMute: { toggleMute(1) },
-                        onToggleSolo: { toggleSolo(1) }
-                    )
-                    StemChannelView(
-                        title: "BASS",
-                        volume: $engine.bassVolume,
-                        isMuted: $engine.bassMuted,
-                        isSoloed: $engine.bassSolo,
-                        eqMagnitudes: engine.bassEQMagnitudes,
-                        isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying,
-                        onToggleMute: { toggleMute(2) },
-                        onToggleSolo: { toggleSolo(2) }
-                    )
-                    StemChannelView(
-                        title: "OTHER",
-                        volume: $engine.otherVolume,
-                        isMuted: $engine.otherMuted,
-                        isSoloed: $engine.otherSolo,
-                        eqMagnitudes: engine.otherEQMagnitudes,
-                        isAnySoloed: anySolo,
-                        isPlaying: engine.isPlaying,
-                        onToggleMute: { toggleMute(3) },
-                        onToggleSolo: { toggleSolo(3) }
-                    )
-                }
-                .padding(.horizontal, 24)
-                .frame(maxHeight: .infinity)
+                headerView
+                stemMixerView
             }
             .background(GridBackground())
             
@@ -158,18 +42,150 @@ public struct PlayerView: View {
             TransportBar()
         }
         .background {
-            // Number Keyboard Shortcuts: 1-4 for Mute, Shift+1-4 for Solo
-            Group {
-                Button("") { toggleMute(0) }.keyboardShortcut("1", modifiers: []).hidden()
-                Button("") { toggleMute(1) }.keyboardShortcut("2", modifiers: []).hidden()
-                Button("") { toggleMute(2) }.keyboardShortcut("3", modifiers: []).hidden()
-                Button("") { toggleMute(3) }.keyboardShortcut("4", modifiers: []).hidden()
-                
-                Button("") { toggleSolo(0) }.keyboardShortcut("1", modifiers: [.shift]).hidden()
-                Button("") { toggleSolo(1) }.keyboardShortcut("2", modifiers: [.shift]).hidden()
-                Button("") { toggleSolo(2) }.keyboardShortcut("3", modifiers: [.shift]).hidden()
-                Button("") { toggleSolo(3) }.keyboardShortcut("4", modifiers: [.shift]).hidden()
+            shortcutsOverlay
+        }
+    }
+    
+    private var headerView: some View {
+        HStack(spacing: 18) {
+            if let isSidebarVisible = isSidebarVisible {
+                sidebarToggleButton(isSidebarVisible: isSidebarVisible)
             }
+            
+            AlbumArtView(image: engineManager.albumArt)
+            
+            trackInfoView
+            
+            Spacer(minLength: 20)
+            
+            DynamicIslandDotWaveformView(
+                magnitudes: engineManager.masterEQMagnitudes,
+                amplitudes: engineManager.masterWaveformAmplitudes,
+                isPlaying: engineManager.isPlaying
+            )
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 8)
+    }
+    
+    private func sidebarToggleButton(isSidebarVisible: Binding<Bool>) -> some View {
+        Button(action: {
+            Haptics.playClick()
+            withAnimation(nil) { // 0ms Instant Nothing Hardware Snap
+                isSidebarVisible.wrappedValue.toggle()
+            }
+        }) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6), lineWidth: 1)
+                    .frame(width: 18, height: 14)
+                
+                HStack(spacing: 2) {
+                    Rectangle()
+                        .fill(isSidebarVisible.wrappedValue ? Color.red : Color.gray.opacity(0.6))
+                        .frame(width: 4, height: 10)
+                    Spacer()
+                }
+                .frame(width: 14, height: 10)
+            }
+            .frame(width: 28, height: 28)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var trackInfoView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: 26))
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            HStack(spacing: 12) {
+                Text(engineManager.isBypassed ? "SOURCE: ORIGINAL MASTER" : "SOURCE: 4-STEM ISOLATION")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(engineManager.isBypassed ? .yellow : .gray)
+                
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(engineManager.isPlaying ? Color.red : Color.gray)
+                        .frame(width: 6, height: 6)
+                    
+                    Text(engineManager.isPlaying ? "ACTIVE" : "STANDBY")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(engineManager.isPlaying ? .red : .gray)
+                }
+            }
+        }
+    }
+    
+    private var stemMixerView: some View {
+        @Bindable var engine = engineManager
+        let anySolo = engine.vocalSolo || engine.drumSolo || engine.bassSolo || engine.otherSolo
+        
+        return HStack(spacing: 18) {
+            StemChannelView(
+                title: "VOCALS",
+                volume: $engine.vocalVolume,
+                isMuted: $engine.vocalMuted,
+                isSoloed: $engine.vocalSolo,
+                eqMagnitudes: engine.vocalEQMagnitudes,
+                isAnySoloed: anySolo,
+                isPlaying: engine.isPlaying,
+                onToggleMute: { toggleMute(0) },
+                onToggleSolo: { toggleSolo(0) }
+            )
+            StemChannelView(
+                title: "DRUMS",
+                volume: $engine.drumVolume,
+                isMuted: $engine.drumMuted,
+                isSoloed: $engine.drumSolo,
+                eqMagnitudes: engine.drumEQMagnitudes,
+                isAnySoloed: anySolo,
+                isPlaying: engine.isPlaying,
+                onToggleMute: { toggleMute(1) },
+                onToggleSolo: { toggleSolo(1) }
+            )
+            StemChannelView(
+                title: "BASS",
+                volume: $engine.bassVolume,
+                isMuted: $engine.bassMuted,
+                isSoloed: $engine.bassSolo,
+                eqMagnitudes: engine.bassEQMagnitudes,
+                isAnySoloed: anySolo,
+                isPlaying: engine.isPlaying,
+                onToggleMute: { toggleMute(2) },
+                onToggleSolo: { toggleSolo(2) }
+            )
+            StemChannelView(
+                title: "OTHER",
+                volume: $engine.otherVolume,
+                isMuted: $engine.otherMuted,
+                isSoloed: $engine.otherSolo,
+                eqMagnitudes: engine.otherEQMagnitudes,
+                isAnySoloed: anySolo,
+                isPlaying: engine.isPlaying,
+                onToggleMute: { toggleMute(3) },
+                onToggleSolo: { toggleSolo(3) }
+            )
+        }
+        .padding(.horizontal, 24)
+        .frame(maxHeight: .infinity)
+    }
+    
+    private var shortcutsOverlay: some View {
+        Group {
+            Button("") { toggleMute(0) }.keyboardShortcut("1", modifiers: []).hidden()
+            Button("") { toggleMute(1) }.keyboardShortcut("2", modifiers: []).hidden()
+            Button("") { toggleMute(2) }.keyboardShortcut("3", modifiers: []).hidden()
+            Button("") { toggleMute(3) }.keyboardShortcut("4", modifiers: []).hidden()
+            
+            Button("") { toggleSolo(0) }.keyboardShortcut("1", modifiers: [.shift]).hidden()
+            Button("") { toggleSolo(1) }.keyboardShortcut("2", modifiers: [.shift]).hidden()
+            Button("") { toggleSolo(2) }.keyboardShortcut("3", modifiers: [.shift]).hidden()
+            Button("") { toggleSolo(3) }.keyboardShortcut("4", modifiers: [.shift]).hidden()
         }
     }
     
@@ -735,137 +751,148 @@ struct TransportBar: View {
     
     var body: some View {
         HStack(spacing: 16) {
-            // Synchronized Single-Clock Time String (0ms offset)
-            Text(engineManager.currentTimeString)
-                .font(.custom("DotGothic16-Regular", size: 16))
-                .foregroundColor(.red)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            
-            // Discrete LED Hardware Dot-Matrix Progress Bar (0ms snap)
-            DotMatrixProgressBar(
-                progress: engineManager.playbackProgress,
-                onSeek: { percent in
-                    engineManager.playbackProgress = percent
-                    engineManager.updateTimeString(for: percent)
-                },
-                onSeekingChanged: { isSeeking in
-                    if isSeeking {
-                        if !wasPlayingBeforeDrag && engineManager.isPlaying {
-                            wasPlayingBeforeDrag = true
-                            engineManager.togglePlayback()
-                        }
-                    } else {
-                        engineManager.seek(toPercentage: engineManager.playbackProgress)
-                        if wasPlayingBeforeDrag {
-                            engineManager.togglePlayback()
-                        }
-                        wasPlayingBeforeDrag = false
-                    }
-                }
-            )
-            
-            // Play / Pause Transport Button
-            Button(action: {
-                Haptics.playClick()
-                engineManager.togglePlayback()
-            }) {
-                Image(systemName: engineManager.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.black)
-                    .frame(width: 44, height: 44)
-                    .background(Color.red)
-                    .clipShape(Circle())
-                    .contentShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .keyboardShortcut(.space, modifiers: [])
-            
-            // Master Bypass A/B Comparison Toggle (Fixed 110x34pt Hardware Dimensions & Full-Surface Hit Box)
-            Button(action: {
-                Haptics.playClick()
-                engineManager.isBypassed.toggle()
-            }) {
-                Text(engineManager.isBypassed ? "BYPASS: ON" : "BYPASS: OFF")
-                    .font(.custom("DotGothic16-Regular", size: 13))
-                    .fontWeight(.bold)
-                    .frame(width: 110, height: 34)
-                    .background(
-                        engineManager.isBypassed
-                            ? Color.red
-                            : (isBypassHovered ? Color.white.opacity(0.08) : Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(
-                                engineManager.isBypassed
-                                    ? Color.red
-                                    : (isBypassHovered ? Color.white.opacity(0.8) : Color.red.opacity(0.8)),
-                                lineWidth: 1
-                            )
-                    )
-                    .foregroundColor(engineManager.isBypassed ? .black : .red)
-                    .contentShape(Rectangle()) // Entire 110x34 area clickable!
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isBypassHovered = hovering
-            }
-            
-            // Export Stems Button with Fixed 140x34pt Hardware Dimensions & Full-Surface Hit Box
-            Button(action: {
-                Haptics.playClick()
-                engineManager.exportStems()
-            }) {
-                ZStack {
-                    switch engineManager.exportState {
-                    case .idle:
-                        Text("EXPORT STEMS")
-                            .fontWeight(.bold)
-                            .foregroundColor(.red)
-                    case .exporting(let stage, let percent):
-                        Text("\(stage) \(Int(percent * 100))%")
-                            .fontWeight(.bold)
-                            .foregroundColor(.yellow)
-                    case .completed:
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark")
-                            Text("COMPLETED")
-                        }
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    }
-                }
-                .font(.custom("DotGothic16-Regular", size: 13))
-                .frame(width: 140, height: 34)
-                .background(
-                    engineManager.exportState == .completed
-                        ? Color.red
-                        : (engineManager.isExporting
-                            ? Color.red.opacity(0.25)
-                            : (isExportHovered ? Color.white.opacity(0.08) : Color.clear))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(
-                            engineManager.exportState == .completed
-                                ? Color.white
-                                : (isExportHovered ? Color.white.opacity(0.8) : Color.red),
-                            lineWidth: 1
-                        )
-                )
-                .contentShape(Rectangle()) // Entire 140x34 area clickable!
-            }
-            .disabled(engineManager.isExporting || engineManager.exportState == .completed)
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isExportHovered = hovering
-            }
+            timeLabel
+            progressBar
+            playButton
+            bypassButton
+            exportButton
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .background(Color.black)
         .border(Color.white.opacity(0.1), width: 1)
+    }
+    
+    private var timeLabel: some View {
+        Text(engineManager.currentTimeString)
+            .font(.custom("DotGothic16-Regular", size: 16))
+            .foregroundColor(.red)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+    
+    private var progressBar: some View {
+        DotMatrixProgressBar(
+            progress: engineManager.playbackProgress,
+            onSeek: { percent in
+                engineManager.playbackProgress = percent
+                engineManager.updateTimeString(for: percent)
+            },
+            onSeekingChanged: { isSeeking in
+                if isSeeking {
+                    if !wasPlayingBeforeDrag && engineManager.isPlaying {
+                        wasPlayingBeforeDrag = true
+                        engineManager.togglePlayback()
+                    }
+                } else {
+                    engineManager.seek(toPercentage: engineManager.playbackProgress)
+                    if wasPlayingBeforeDrag {
+                        engineManager.togglePlayback()
+                    }
+                    wasPlayingBeforeDrag = false
+                }
+            }
+        )
+    }
+    
+    private var playButton: some View {
+        Button(action: {
+            Haptics.playClick()
+            engineManager.togglePlayback()
+        }) {
+            Image(systemName: engineManager.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 20))
+                .foregroundColor(.black)
+                .frame(width: 44, height: 44)
+                .background(Color.red)
+                .clipShape(Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .keyboardShortcut(.space, modifiers: [])
+    }
+    
+    private var bypassButton: some View {
+        Button(action: {
+            Haptics.playClick()
+            engineManager.isBypassed.toggle()
+        }) {
+            Text(engineManager.isBypassed ? "BYPASS: ON" : "BYPASS: OFF")
+                .font(.custom("DotGothic16-Regular", size: 13))
+                .fontWeight(.bold)
+                .frame(width: 110, height: 34)
+                .background(
+                    engineManager.isBypassed
+                        ? Color.red
+                        : (isBypassHovered ? Color.white.opacity(0.08) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(
+                            engineManager.isBypassed
+                                ? Color.red
+                                : (isBypassHovered ? Color.white.opacity(0.8) : Color.red.opacity(0.8)),
+                            lineWidth: 1
+                        )
+                )
+                .foregroundColor(engineManager.isBypassed ? .black : .red)
+                .contentShape(Rectangle()) // Entire 110x34 area clickable!
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isBypassHovered = hovering
+        }
+    }
+    
+    private var exportButton: some View {
+        Button(action: {
+            Haptics.playClick()
+            engineManager.exportStems()
+        }) {
+            ZStack {
+                switch engineManager.exportState {
+                case .idle:
+                    Text("EXPORT STEMS")
+                        .fontWeight(.bold)
+                        .foregroundColor(.red)
+                case .exporting(let stage, let percent):
+                    Text("\(stage) \(Int(percent * 100))%")
+                        .fontWeight(.bold)
+                        .foregroundColor(.yellow)
+                case .completed:
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                        Text("COMPLETED")
+                    }
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                }
+            }
+            .font(.custom("DotGothic16-Regular", size: 13))
+            .frame(width: 140, height: 34)
+            .background(
+                engineManager.exportState == .completed
+                    ? Color.red
+                    : (engineManager.isExporting
+                        ? Color.red.opacity(0.25)
+                        : (isExportHovered ? Color.white.opacity(0.08) : Color.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(
+                        engineManager.exportState == .completed
+                            ? Color.white
+                            : (isExportHovered ? Color.white.opacity(0.8) : Color.red),
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(Rectangle()) // Entire 140x34 area clickable!
+        }
+        .disabled(engineManager.isExporting || engineManager.exportState == .completed)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isExportHovered = hovering
+        }
     }
 }
 
