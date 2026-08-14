@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import AppKit
+import AVFoundation
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -15,6 +16,18 @@ struct LibraryView: View {
     
     @State private var isSettingsHovered = false
     
+    // Custom Nothing Scrollbar State
+    @State private var containerHeight: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
+    @State private var isScrolling = false
+    @State private var isScrollbarHovered = false
+    @State private var isDraggingScrollbar = false
+    @State private var scrollFadeTimer: Timer? = nil
+    
+    // Telemetry Duration State
+    @State private var totalDurationSeconds: Double = 0.0
+    
     public init(
         activeMenuTrackID: Binding<String?> = .constant(nil),
         onRenameTrack: ((TrackModel) -> Void)? = nil,
@@ -25,6 +38,62 @@ struct LibraryView: View {
         self.onRenameTrack = onRenameTrack
         self.onDeleteTrack = onDeleteTrack
         self.onOpenSettings = onOpenSettings
+    }
+    
+    var totalOriginalBytes: Int64 {
+        tracks.reduce(0) { total, track in
+            let size = (try? FileManager.default.attributesOfItem(atPath: track.originalURL.path)[.size] as? Int64) ?? 0
+            return total + size
+        }
+    }
+    
+    var formattedTotalSize: String {
+        let bytes = totalOriginalBytes
+        let mb = Double(bytes) / 1_000_000.0
+        if mb >= 1000.0 {
+            let gb = Double(bytes) / 1_000_000_000.0
+            return String(format: "%.2f GB", gb)
+        } else {
+            return String(format: "%.1f MB", mb)
+        }
+    }
+    
+    var formattedTotalDuration: String {
+        let totalMins = Int(round(totalDurationSeconds / 60.0))
+        if totalMins < 60 {
+            return "\(max(1, totalMins)) MIN"
+        } else {
+            let hours = totalMins / 60
+            let mins = totalMins % 60
+            return "\(hours)H \(mins)M"
+        }
+    }
+    
+    private func triggerScrollActivity() {
+        isScrolling = true
+        scrollFadeTimer?.invalidate()
+        scrollFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { _ in
+            Task { @MainActor in
+                isScrolling = false
+            }
+        }
+    }
+    
+    private func recalculateTotalDuration() {
+        Task.detached(priority: .userInitiated) {
+            var totalSecs: Double = 0.0
+            for track in tracks {
+                if let file = try? AVAudioFile(forReading: track.vocalStemURL) {
+                    totalSecs += Double(file.length) / file.processingFormat.sampleRate
+                } else if let file = try? AVAudioFile(forReading: track.originalURL) {
+                    totalSecs += Double(file.length) / file.processingFormat.sampleRate
+                }
+            }
+            let finalSecs = totalSecs
+            await MainActor.run {
+                self.totalDurationSeconds = finalSecs
+            }
+        }
     }
     
     var body: some View {
@@ -61,7 +130,7 @@ struct LibraryView: View {
                 Divider()
                     .background(Color.white.opacity(0.1))
                 
-                // Track List
+                // Track List with Custom Nothing Hardware Scrollbar
                 if tracks.isEmpty {
                     VStack(spacing: 12) {
                         Spacer()
@@ -78,42 +147,105 @@ struct LibraryView: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else {
-                    ScrollView {
-                        VStack(spacing: 6) {
-                            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                                let isCurrentMenuOpen = activeMenuTrackID == track.id
-                                let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
-                                TrackRowView(
-                                    track: track,
-                                    isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
-                                    isMenuOpen: isCurrentMenuOpen,
-                                    onToggleMenu: {
-                                        if activeMenuTrackID == track.id {
-                                            activeMenuTrackID = nil
-                                        } else {
-                                            activeMenuTrackID = track.id
-                                        }
-                                    },
-                                    onSelect: {
-                                        activeMenuTrackID = nil
-                                        Task {
-                                            await engineManager.loadTrack(track)
-                                        }
-                                    },
-                                    onRename: {
-                                        activeMenuTrackID = nil
-                                        onRenameTrack?(track)
-                                    },
-                                    onDelete: {
-                                        activeMenuTrackID = nil
-                                        onDeleteTrack?(track)
+                    GeometryReader { containerGeo in
+                        ZStack(alignment: .trailing) {
+                            ScrollView {
+                                VStack(spacing: 6) {
+                                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                                        let isCurrentMenuOpen = activeMenuTrackID == track.id
+                                        let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
+                                        TrackRowView(
+                                            track: track,
+                                            isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
+                                            isMenuOpen: isCurrentMenuOpen,
+                                            onToggleMenu: {
+                                                if activeMenuTrackID == track.id {
+                                                    activeMenuTrackID = nil
+                                                } else {
+                                                    activeMenuTrackID = track.id
+                                                }
+                                            },
+                                            onSelect: {
+                                                activeMenuTrackID = nil
+                                                Task {
+                                                    await engineManager.loadTrack(track)
+                                                }
+                                            },
+                                            onRename: {
+                                                activeMenuTrackID = nil
+                                                onRenameTrack?(track)
+                                            },
+                                            onDelete: {
+                                                activeMenuTrackID = nil
+                                                onDeleteTrack?(track)
+                                            }
+                                        )
+                                        .zIndex(zIndexValue)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(
+                                    GeometryReader { contentGeo in
+                                        Color.clear
+                                            .preference(key: ContentHeightPreferenceKey.self, value: contentGeo.size.height)
+                                            .preference(key: ScrollOffsetPreferenceKey.self, value: contentGeo.frame(in: .named("LibraryScroll")).minY)
                                     }
                                 )
-                                .zIndex(zIndexValue)
+                            }
+                            .coordinateSpace(name: "LibraryScroll")
+                            .scrollIndicators(.hidden) // Replaces default macOS scrollbar!
+                            
+                            // Custom Nothing Hardware Red LED Scrollbar (2.5pt wide, dark track, rounded micro-pill)
+                            if contentHeight > containerHeight && containerHeight > 0 {
+                                let trackHeight = max(10, containerHeight - 12)
+                                let thumbRatio = min(1.0, containerHeight / max(1, contentHeight))
+                                let thumbHeight = max(24.0, trackHeight * thumbRatio)
+                                let maxScroll = max(1.0, contentHeight - containerHeight)
+                                let currentProgress = max(0.0, min(1.0, -scrollOffset / maxScroll))
+                                let thumbOffset = currentProgress * (trackHeight - thumbHeight)
+                                
+                                ZStack(alignment: .top) {
+                                    // Dark track rail along the right edge
+                                    RoundedRectangle(cornerRadius: 1)
+                                        .fill(Color.white.opacity(0.06))
+                                        .frame(width: 2.5, height: trackHeight)
+                                    
+                                    // Discrete Nothing Red LED Thumb
+                                    RoundedRectangle(cornerRadius: 1.25)
+                                        .fill(Color.red)
+                                        .frame(width: 2.5, height: thumbHeight)
+                                        .offset(y: thumbOffset)
+                                        .shadow(color: Color.red.opacity(isScrolling || isScrollbarHovered || isDraggingScrollbar ? 0.6 : 0.0), radius: 4, x: 0, y: 0)
+                                }
+                                .frame(width: 8, height: trackHeight)
+                                .contentShape(Rectangle())
+                                .padding(.trailing, 3)
+                                .opacity((isScrolling || isScrollbarHovered || isDraggingScrollbar) ? 1.0 : 0.35)
+                                .animation(.easeInOut(duration: 0.2), value: isScrolling)
+                                .animation(.easeInOut(duration: 0.2), value: isScrollbarHovered)
+                                .onHover { hovering in
+                                    isScrollbarHovered = hovering
+                                }
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .onPreferenceChange(ContentHeightPreferenceKey.self) { height in
+                            contentHeight = height
+                        }
+                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                            scrollOffset = offset
+                            triggerScrollActivity()
+                        }
+                        .onAppear {
+                            containerHeight = containerGeo.size.height
+                            recalculateTotalDuration()
+                        }
+                        .onChange(of: containerGeo.size.height) { _, newHeight in
+                            containerHeight = newHeight
+                        }
+                        .onChange(of: tracks.count) { _, _ in
+                            recalculateTotalDuration()
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -126,28 +258,52 @@ struct LibraryView: View {
                 Divider()
                     .background(Color.white.opacity(0.12))
                 
-                // Bottom Footer: Track Count & Nothing-Styled Settings Button
-                HStack {
-                    Text("\(tracks.count) \(tracks.count == 1 ? "TRACK" : "TRACKS")")
-                        .font(.custom("DotGothic16-Regular", size: 11))
-                        .foregroundColor(.gray.opacity(0.6))
+                // Bottom Footer: Telemetry (Tracks • Total Size • Total Duration) & Nothing Settings Button
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text("\(tracks.count) \(tracks.count == 1 ? "TRACK" : "TRACKS")")
+                            .font(.custom("DotGothic16-Regular", size: 10.5))
+                            .foregroundColor(.gray.opacity(0.8))
+                        
+                        if totalOriginalBytes > 0 {
+                            Text("•")
+                                .font(.custom("DotGothic16-Regular", size: 9))
+                                .foregroundColor(.red)
+                            
+                            Text(formattedTotalSize)
+                                .font(.custom("DotGothic16-Regular", size: 10.5))
+                                .foregroundColor(.gray.opacity(0.8))
+                        }
+                        
+                        if totalDurationSeconds > 0 {
+                            Text("•")
+                                .font(.custom("DotGothic16-Regular", size: 9))
+                                .foregroundColor(.red)
+                            
+                            Text(formattedTotalDuration)
+                                .font(.custom("DotGothic16-Regular", size: 10.5))
+                                .foregroundColor(.gray.opacity(0.8))
+                        }
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     
-                    Spacer()
+                    Spacer(minLength: 4)
                     
                     Button(action: {
                         Haptics.playClick()
                         onOpenSettings?()
                     }) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: "gearshape")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                             Text("SETTINGS")
-                                .font(.custom("DotGothic16-Regular", size: 12))
+                                .font(.custom("DotGothic16-Regular", size: 11))
                                 .fontWeight(.bold)
                         }
                         .foregroundColor(isSettingsHovered ? .white : .gray)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
                         .background(isSettingsHovered ? Color.white.opacity(0.08) : Color.clear)
                         .overlay(
                             RoundedRectangle(cornerRadius: 3)
@@ -161,8 +317,8 @@ struct LibraryView: View {
                         isSettingsHovered = hovering
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .background(Color.black.opacity(0.95))
             }
             .background(Color.black.opacity(0.85))
@@ -232,6 +388,16 @@ struct TrackRowView: View {
     @State private var isRenameHovered = false
     @State private var isDeleteHovered = false
     
+    private var dotColor: Color {
+        if isMenuOpen {
+            return Color.red
+        } else if isHovered {
+            return Color.white
+        } else {
+            return Color.gray.opacity(0.7)
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 8) {
             // Main Track Click Area
@@ -265,9 +431,9 @@ struct TrackRowView: View {
                 onToggleMenu()
             }) {
                 HStack(spacing: 2.5) {
-                    Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
-                    Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
-                    Circle().fill(isMenuOpen ? Color.red : (isHovered ? Color.white : Color.gray.opacity(0.7))).frame(width: 3, height: 3)
+                    Circle().fill(dotColor).frame(width: 3, height: 3)
+                    Circle().fill(dotColor).frame(width: 3, height: 3)
+                    Circle().fill(dotColor).frame(width: 3, height: 3)
                 }
                 .frame(width: 24, height: 24)
                 .background(isMenuOpen ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
@@ -349,5 +515,20 @@ struct TrackRowView: View {
         .onHover { hovering in
             isHovered = hovering
         }
+    }
+}
+
+// MARK: - Scroll Position and Content Height Preference Keys
+struct ContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
