@@ -100,171 +100,17 @@ struct LibraryView: View {
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
-                // Header: Title & Quick Import Track Button
-                HStack {
-                    Text("LIBRARY")
-                        .font(.custom("DotGothic16-Regular", size: 14))
-                        .foregroundColor(.gray)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        Haptics.playClick()
-                        importTrack()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle")
-                            Text("IMPORT TRACK")
-                        }
-                        .font(.custom("DotGothic16-Regular", size: 14))
-                        .foregroundColor(.red)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                headerView
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
                 
-                // Track List with Custom Nothing Hardware Scrollbar
-                if tracks.isEmpty {
-                    VStack(spacing: 12) {
-                        Spacer()
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 32))
-                            .foregroundColor(.gray.opacity(0.5))
-                        Text("NO TRACKS IMPORTED")
-                            .font(.custom("DotGothic16-Regular", size: 13))
-                            .foregroundColor(.gray)
-                        Text("Drag & drop audio files here")
-                            .font(.custom("DotGothic16-Regular", size: 11))
-                            .foregroundColor(.gray.opacity(0.7))
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                } else {
-                    ScrollView {
-                        VStack(spacing: 6) {
-                            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                                let isCurrentMenuOpen = activeMenuTrackID == track.id
-                                let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
-                                TrackRowView(
-                                    track: track,
-                                    isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
-                                    isMenuOpen: isCurrentMenuOpen,
-                                    onToggleMenu: {
-                                        if activeMenuTrackID == track.id {
-                                            activeMenuTrackID = nil
-                                        } else {
-                                            activeMenuTrackID = track.id
-                                        }
-                                    },
-                                    onSelect: {
-                                        activeMenuTrackID = nil
-                                        Task {
-                                            await engineManager.loadTrack(track)
-                                        }
-                                    },
-                                    onRename: {
-                                        activeMenuTrackID = nil
-                                        onRenameTrack?(track)
-                                    },
-                                    onDelete: {
-                                        activeMenuTrackID = nil
-                                        onDeleteTrack?(track)
-                                    }
-                                )
-                                .zIndex(zIndexValue)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(CustomScrollerModifier())
-                    }
-                    .onAppear {
-                        recalculateTotalDuration()
-                    }
-                    .onChange(of: tracks.count) { _, _ in
-                        recalculateTotalDuration()
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if activeMenuTrackID != nil {
-                            activeMenuTrackID = nil
-                        }
-                    }
-                }
+                trackListView
                 
                 Divider()
                     .background(Color.white.opacity(0.12))
                 
-                // Bottom Footer: Telemetry (Tracks • Total Size • Total Duration) & Nothing Settings Button
-                HStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Text("\(tracks.count) \(tracks.count == 1 ? "TRACK" : "TRACKS")")
-                            .font(.custom("DotGothic16-Regular", size: 10.5))
-                            .foregroundColor(.gray.opacity(0.8))
-                        
-                        if totalOriginalBytes > 0 {
-                            Text("•")
-                                .font(.custom("DotGothic16-Regular", size: 9))
-                                .foregroundColor(.red)
-                            
-                            Text(formattedTotalSize)
-                                .font(.custom("DotGothic16-Regular", size: 10.5))
-                                .foregroundColor(.gray.opacity(0.8))
-                        }
-                        
-                        if totalDurationSeconds > 0 {
-                            Text("•")
-                                .font(.custom("DotGothic16-Regular", size: 9))
-                                .foregroundColor(.red)
-                            
-                            Text(formattedTotalDuration)
-                                .font(.custom("DotGothic16-Regular", size: 10.5))
-                                .foregroundColor(.gray.opacity(0.8))
-                        }
-                    }
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    
-                    Spacer(minLength: 4)
-                    
-                    Button(action: {
-                        Haptics.playClick()
-                        onOpenSettings?()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("SETTINGS")
-                                .font(.custom("DotGothic16-Regular", size: 11))
-                                .fontWeight(.bold)
-                        }
-                        .foregroundColor(isSettingsHovered ? .white : .gray)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(isSettingsHovered ? Color.white.opacity(0.08) : Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(isSettingsHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.12), lineWidth: 1)
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        if hovering && !isSettingsHovered { Haptics.playClick() }
-                        isSettingsHovered = hovering
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.95))
+                footerView
             }
             .background(Color.black.opacity(0.85))
             .contentShape(Rectangle())
@@ -273,6 +119,186 @@ struct LibraryView: View {
                     activeMenuTrackID = nil
                 }
             }
+        }
+    }
+    
+    private var headerView: some View {
+        HStack {
+            Text("LIBRARY")
+                .font(.custom("DotGothic16-Regular", size: 14))
+                .foregroundColor(.gray)
+            
+            Spacer()
+            
+            Button(action: {
+                Haptics.playClick()
+                importTrack()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle")
+                    Text("IMPORT TRACK")
+                }
+                .font(.custom("DotGothic16-Regular", size: 14))
+                .foregroundColor(.red)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+    
+    @ViewBuilder
+    private var trackListView: some View {
+        if tracks.isEmpty {
+            emptyStateView
+        } else {
+            tracksScrollView
+        }
+    }
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "music.note.list")
+                .font(.system(size: 32))
+                .foregroundColor(.gray.opacity(0.5))
+            Text("NO TRACKS IMPORTED")
+                .font(.custom("DotGothic16-Regular", size: 13))
+                .foregroundColor(.gray)
+            Text("Drag & drop audio files here")
+                .font(.custom("DotGothic16-Regular", size: 11))
+                .foregroundColor(.gray.opacity(0.7))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var tracksScrollView: some View {
+        ScrollView {
+            VStack(spacing: 6) {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    let isCurrentMenuOpen = activeMenuTrackID == track.id
+                    let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
+                    TrackRowView(
+                        track: track,
+                        isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
+                        isMenuOpen: isCurrentMenuOpen,
+                        onToggleMenu: {
+                            if activeMenuTrackID == track.id {
+                                activeMenuTrackID = nil
+                            } else {
+                                activeMenuTrackID = track.id
+                            }
+                        },
+                        onSelect: {
+                            activeMenuTrackID = nil
+                            Task {
+                                await engineManager.loadTrack(track)
+                            }
+                        },
+                        onRename: {
+                            activeMenuTrackID = nil
+                            onRenameTrack?(track)
+                        },
+                        onDelete: {
+                            activeMenuTrackID = nil
+                            onDeleteTrack?(track)
+                        }
+                    )
+                    .zIndex(zIndexValue)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(CustomScrollerModifier())
+        }
+        .onAppear {
+            recalculateTotalDuration()
+        }
+        .onChange(of: tracks.count) { _, _ in
+            recalculateTotalDuration()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if activeMenuTrackID != nil {
+                activeMenuTrackID = nil
+            }
+        }
+    }
+    
+    private var footerView: some View {
+        HStack(spacing: 4) {
+            telemetryView
+            
+            Spacer(minLength: 4)
+            
+            settingsButton
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.95))
+    }
+    
+    private var telemetryView: some View {
+        HStack(spacing: 4) {
+            Text("\(tracks.count) \(tracks.count == 1 ? "TRACK" : "TRACKS")")
+                .font(.custom("DotGothic16-Regular", size: 10.5))
+                .foregroundColor(.gray.opacity(0.8))
+            
+            if totalOriginalBytes > 0 {
+                Text("•")
+                    .font(.custom("DotGothic16-Regular", size: 9))
+                    .foregroundColor(.red)
+                
+                Text(formattedTotalSize)
+                    .font(.custom("DotGothic16-Regular", size: 10.5))
+                    .foregroundColor(.gray.opacity(0.8))
+            }
+            
+            if totalDurationSeconds > 0 {
+                Text("•")
+                    .font(.custom("DotGothic16-Regular", size: 9))
+                    .foregroundColor(.red)
+                
+                Text(formattedTotalDuration)
+                    .font(.custom("DotGothic16-Regular", size: 10.5))
+                    .foregroundColor(.gray.opacity(0.8))
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+    }
+    
+    private var settingsButton: some View {
+        Button(action: {
+            Haptics.playClick()
+            onOpenSettings?()
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 10, weight: .bold))
+                Text("SETTINGS")
+                    .font(.custom("DotGothic16-Regular", size: 11))
+                    .fontWeight(.bold)
+            }
+            .foregroundColor(isSettingsHovered ? .white : .gray)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(isSettingsHovered ? Color.white.opacity(0.08) : Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(isSettingsHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering && !isSettingsHovered { Haptics.playClick() }
+            isSettingsHovered = hovering
         }
     }
     
@@ -345,121 +371,141 @@ struct TrackRowView: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            // Main Track Click Area
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(track.title)
-                        .font(.custom("DotGothic16-Regular", size: 15))
-                        .foregroundColor(isActive ? .red : .white)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 8) {
-                        Text(track.dateAdded, style: .date)
-                            .font(.custom("DotGothic16-Regular", size: 11))
-                            .foregroundColor(.gray)
-                        
-                        if isActive {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 4, height: 4)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            // Nothing Hardware 3-Dots Action Button
-            Button(action: {
-                Haptics.playClick()
-                onToggleMenu()
-            }) {
-                HStack(spacing: 2.5) {
-                    Circle().fill(dotColor).frame(width: 3, height: 3)
-                    Circle().fill(dotColor).frame(width: 3, height: 3)
-                    Circle().fill(dotColor).frame(width: 3, height: 3)
-                }
-                .frame(width: 24, height: 24)
-                .background(isMenuOpen ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
-                .clipShape(RoundedRectangle(cornerRadius: 3))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(isMenuOpen ? Color.red : (isHovered ? Color.white.opacity(0.25) : Color.clear), lineWidth: 1)
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .overlay(alignment: .topTrailing) {
-                if isMenuOpen {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button(action: {
-                            Haptics.playClick()
-                            onRename()
-                        }) {
-                            HStack(spacing: 6) {
-                                Text("[ RENAME ]")
-                                    .font(.custom("DotGothic16-Regular", size: 12))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(isRenameHovered ? .black : .white)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(isRenameHovered ? Color.red : Color.black)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            if hovering && !isRenameHovered { Haptics.playClick() }
-                            isRenameHovered = hovering
-                        }
-                        
-                        Divider()
-                            .background(Color.white.opacity(0.18))
-                        
-                        Button(action: {
-                            Haptics.playClick()
-                            onDelete()
-                        }) {
-                            HStack(spacing: 6) {
-                                Text("[ DELETE ]")
-                                    .font(.custom("DotGothic16-Regular", size: 12))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(isDeleteHovered ? .black : .red)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(isDeleteHovered ? Color.red : Color.black)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            if hovering && !isDeleteHovered { Haptics.playClick() }
-                            isDeleteHovered = hovering
-                        }
-                    }
-                    .frame(width: 120)
-                    .background(Color.black)
-                    .compositingGroup()
-                    .border(Color.white.opacity(0.22), width: 1)
-                    .overlay(CornerBrackets())
-                    .offset(x: 0, y: 28) // Positioned directly below 3-dots button
-                    .shadow(color: Color.black, radius: 10, x: 0, y: 4)
-                    .zIndex(1000)
-                }
-            }
+            trackButton
+            dotsMenuButton
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(isActive ? Color.red.opacity(0.12) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
-        .border(isActive ? Color.red.opacity(0.4) : Color.clear, width: 1)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            isActive
+                ? Color.red.opacity(0.12)
+                : (isHovered ? Color.white.opacity(0.05) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(
+                    isActive
+                        ? Color.red.opacity(0.5)
+                        : (isHovered ? Color.white.opacity(0.12) : Color.clear),
+                    lineWidth: 1
+                )
+        )
+        .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
         }
+    }
+    
+    private var trackButton: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title)
+                    .font(.custom("DotGothic16-Regular", size: 15))
+                    .foregroundColor(isActive ? .red : .white)
+                    .lineLimit(1)
+                
+                HStack(spacing: 8) {
+                    Text(track.dateAdded, style: .date)
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(.gray)
+                    
+                    if isActive {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 4, height: 4)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var dotsMenuButton: some View {
+        Button(action: {
+            Haptics.playClick()
+            onToggleMenu()
+        }) {
+            HStack(spacing: 2.5) {
+                Circle().fill(dotColor).frame(width: 3, height: 3)
+                Circle().fill(dotColor).frame(width: 3, height: 3)
+                Circle().fill(dotColor).frame(width: 3, height: 3)
+            }
+            .frame(width: 24, height: 24)
+            .background(isMenuOpen ? Color.red.opacity(0.18) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(isMenuOpen ? Color.red : (isHovered ? Color.white.opacity(0.25) : Color.clear), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            if isMenuOpen {
+                dropdownMenu
+            }
+        }
+    }
+    
+    private var dropdownMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: {
+                Haptics.playClick()
+                onRename()
+            }) {
+                HStack(spacing: 6) {
+                    Text("[ RENAME ]")
+                        .font(.custom("DotGothic16-Regular", size: 12))
+                        .fontWeight(.bold)
+                        .foregroundColor(isRenameHovered ? .black : .white)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(isRenameHovered ? Color.red : Color.black)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering && !isRenameHovered { Haptics.playClick() }
+                isRenameHovered = hovering
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.18))
+            
+            Button(action: {
+                Haptics.playClick()
+                onDelete()
+            }) {
+                HStack(spacing: 6) {
+                    Text("[ DELETE ]")
+                        .font(.custom("DotGothic16-Regular", size: 12))
+                        .fontWeight(.bold)
+                        .foregroundColor(isDeleteHovered ? .black : .red)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(isDeleteHovered ? Color.red : Color.black)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering && !isDeleteHovered { Haptics.playClick() }
+                isDeleteHovered = hovering
+            }
+        }
+        .frame(width: 120)
+        .background(Color.black)
+        .compositingGroup()
+        .border(Color.white.opacity(0.22), width: 1)
+        .overlay(CornerBrackets())
+        .offset(x: 0, y: 28)
     }
 }
 
