@@ -515,10 +515,10 @@ public actor DemucsEngine {
         let destL = pcmBuffer.floatChannelData![0]
         let destR = pcmBuffer.floatChannelData![1]
         
-        _ = audioSamplesL.withUnsafeBufferPointer { pL in
+        audioSamplesL.withUnsafeBufferPointer { pL in
             memcpy(destL, pL.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
-        _ = audioSamplesR.withUnsafeBufferPointer { pR in
+        audioSamplesR.withUnsafeBufferPointer { pR in
             memcpy(destR, pR.baseAddress!, totalFrames * MemoryLayout<Float>.size)
         }
         

@@ -615,7 +615,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 let metadata = try await asset.load(.commonMetadata)
                 for item in metadata {
                     if item.commonKey == .commonKeyArtwork {
-                        if let data = (try? await item.load(.value)) as? Data ?? item.dataValue {
+                        if let data = (try? await item.load(.value)) as? Data {
                             await MainActor.run { self.albumArt = NSImage(data: data) }
                             return
                         }
@@ -626,7 +626,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 let allMeta = try await asset.load(.metadata)
                 for item in allMeta {
                     if item.commonKey == .commonKeyArtwork || item.identifier?.rawValue.contains("APIC") == true || item.identifier?.rawValue.contains("artwork") == true {
-                        if let data = (try? await item.load(.value)) as? Data ?? item.dataValue {
+                        if let data = (try? await item.load(.value)) as? Data {
                             await MainActor.run { self.albumArt = NSImage(data: data) }
                             return
                         }
