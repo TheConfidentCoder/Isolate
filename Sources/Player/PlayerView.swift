@@ -878,22 +878,20 @@ struct DynamicIslandDotWaveformView: View {
         HStack(spacing: 4.5) {
             ForEach(0..<7, id: \.self) { barIndex in
                 let amp = bars[barIndex]
-                // Number of blocks to expand above and below center (0 to 4)
-                // If amp <= 0.02 (quiet or stem lowered): spread = 0 -> only 1 single center dot
-                // If amp reaches peak: spread = 4 -> full 9 vertical dots
-                let spread = isPlaying ? (amp > 0.02 ? min(4, Int(ceil(amp * 4.0))) : 0) : 0
+                let hasSignal = isPlaying && amp > 0.02
+                let spread = hasSignal ? min(4, Int(ceil(amp * 4.0))) : 0
                 
                 VStack(spacing: 1.5) {
                     ForEach(0..<blockCount, id: \.self) { blockIndex in
                         let distance = abs(centerIndex - blockIndex)
-                        let isLit = distance <= spread
+                        let isLit = hasSignal && (distance <= spread)
                         
                         RoundedRectangle(cornerRadius: 0.6)
-                            .fill(isLit ? Color.red : Color.red.opacity(0.07))
+                            .fill(isLit ? Color.red : Color.white.opacity(0.04))
                             .frame(width: 4.5, height: 2.5)
                     }
                 }
-                .animation(.spring(response: 0.12, dampingFraction: 0.62, blendDuration: 0.03), value: amp)
+                .animation(.spring(response: 0.08, dampingFraction: 0.7, blendDuration: 0.01), value: amp)
             }
         }
         .frame(height: 36)
