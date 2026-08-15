@@ -429,6 +429,24 @@ public final class AudioEngineManager: @unchecked Sendable {
         default: break
         }
         
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
+        let stemGain: Float
+        switch stem {
+        case 0: stemGain = anySolo ? (vocalSolo ? Float(vocalVolume) : 0.0) : (vocalMuted ? 0.0 : Float(vocalVolume))
+        case 1: stemGain = anySolo ? (drumSolo ? Float(drumVolume) : 0.0) : (drumMuted ? 0.0 : Float(drumVolume))
+        case 2: stemGain = anySolo ? (bassSolo ? Float(bassVolume) : 0.0) : (bassMuted ? 0.0 : Float(bassVolume))
+        case 3: stemGain = anySolo ? (otherSolo ? Float(otherVolume) : 0.0) : (otherMuted ? 0.0 : Float(otherVolume))
+        default: stemGain = 1.0
+        }
+        
+        if stemGain <= 0.001 {
+            bands = Array(repeating: 0, count: 7)
+        } else {
+            for i in 0..<7 {
+                bands[i] = bands[i] * stemGain
+            }
+        }
+        
         let now = CACurrentMediaTime()
         switch stem {
         case 0:
@@ -479,6 +497,11 @@ public final class AudioEngineManager: @unchecked Sendable {
         applyChannel(drumVolume, drumMuted, drumSolo, drumMixer)
         applyChannel(bassVolume, bassMuted, bassSolo, bassMixer)
         applyChannel(otherVolume, otherMuted, otherSolo, otherMixer)
+        
+        if vocalVolume <= 0.001 || vocalMuted || (anySolo && !vocalSolo) { vocalEQMagnitudes = Array(repeating: 0, count: 7) }
+        if drumVolume <= 0.001 || drumMuted || (anySolo && !drumSolo) { drumEQMagnitudes = Array(repeating: 0, count: 7) }
+        if bassVolume <= 0.001 || bassMuted || (anySolo && !bassSolo) { bassEQMagnitudes = Array(repeating: 0, count: 7) }
+        if otherVolume <= 0.001 || otherMuted || (anySolo && !otherSolo) { otherEQMagnitudes = Array(repeating: 0, count: 7) }
     }
     
     // MARK: - Exclusive Radio-Style Stem Soloing & Muting
