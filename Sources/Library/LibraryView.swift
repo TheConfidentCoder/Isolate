@@ -514,29 +514,48 @@ struct TrackRowView: View {
     }
     
     var body: some View {
-        HStack(spacing: 8) {
-            trackButton
-            dotsMenuButton
+        ZStack {
+            HStack(spacing: 8) {
+                trackButton
+                dotsMenuButton
+            }
+            .opacity(isMenuOpen ? 0.0 : 1.0)
+            
+            if isMenuOpen {
+                inlineActionsView
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
-            isActive
-                ? Color.red.opacity(0.12)
-                : (isHovered ? Color.white.opacity(0.05) : Color.clear)
+            isMenuOpen
+                ? Color.black
+                : (isActive ? Color.red.opacity(0.12) : (isHovered ? Color.white.opacity(0.05) : Color.clear))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 3)
                 .stroke(
-                    isActive
-                        ? Color.red.opacity(0.5)
+                    isMenuOpen || isActive
+                        ? Color.red.opacity(0.8)
                         : (isHovered ? Color.white.opacity(0.12) : Color.clear),
                     lineWidth: 1
                 )
         )
         .contentShape(Rectangle())
         .onHover { hovering in
-            isHovered = hovering
+            if !isMenuOpen {
+                isHovered = hovering
+            }
+        }
+        .contextMenu {
+            Button("Rename Track") {
+                Haptics.playClick()
+                onRename()
+            }
+            Button("Delete Track", role: .destructive) {
+                Haptics.playClick()
+                onDelete()
+            }
         }
     }
     
@@ -586,31 +605,24 @@ struct TrackRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .topTrailing) {
-            if isMenuOpen {
-                dropdownMenu
-            }
-        }
     }
     
-    private var dropdownMenu: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private var inlineActionsView: some View {
+        HStack(spacing: 6) {
             Button(action: {
                 Haptics.playClick()
                 onRename()
             }) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Text("[ RENAME ]")
                         .font(.custom("DotGothic16-Regular", size: 12))
                         .fontWeight(.bold)
-                        .foregroundColor(isRenameHovered ? .black : .white)
-                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(isRenameHovered ? Color.red : Color.black)
-                .contentShape(Rectangle())
+                .foregroundColor(isRenameHovered ? .black : .white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(isRenameHovered ? Color.white : Color.white.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
             }
             .buttonStyle(.plain)
             .onHover { hovering in
@@ -618,38 +630,42 @@ struct TrackRowView: View {
                 isRenameHovered = hovering
             }
             
-            Divider()
-                .background(Color.white.opacity(0.18))
-            
             Button(action: {
                 Haptics.playClick()
                 onDelete()
             }) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Text("[ DELETE ]")
                         .font(.custom("DotGothic16-Regular", size: 12))
                         .fontWeight(.bold)
-                        .foregroundColor(isDeleteHovered ? .black : .red)
-                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(isDeleteHovered ? Color.red : Color.black)
-                .contentShape(Rectangle())
+                .foregroundColor(isDeleteHovered ? .black : .red)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(isDeleteHovered ? Color.red : Color.red.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
             }
             .buttonStyle(.plain)
             .onHover { hovering in
                 if hovering && !isDeleteHovered { Haptics.playClick() }
                 isDeleteHovered = hovering
             }
+            
+            Spacer()
+            
+            Button(action: {
+                Haptics.playClick()
+                onToggleMenu()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.gray)
+                    .frame(width: 24, height: 24)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            .buttonStyle(.plain)
         }
-        .frame(width: 120)
-        .background(Color.black)
-        .compositingGroup()
-        .border(Color.white.opacity(0.22), width: 1)
-        .overlay(CornerBrackets())
-        .offset(x: 0, y: 28)
     }
 }
 
