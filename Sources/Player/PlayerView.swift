@@ -322,7 +322,7 @@ struct StemChannelView: View {
     }
     
     var body: some View {
-        let isDimmed = isAnySoloed && !isSoloed
+        let isDimmed = (isAnySoloed && !isSoloed) || isMuted
         VStack(spacing: 8) {
             Text(title)
                 .font(.custom("DotGothic16-Regular", size: 16))
@@ -374,7 +374,8 @@ struct StemChannelView: View {
             RoundedRectangle(cornerRadius: 0)
                 .stroke(isSoloed ? Color.red.opacity(0.85) : Color.white.opacity(0.1), lineWidth: isSoloed ? 1.5 : 1)
         )
-        .animation(.easeInOut(duration: 0.15), value: isAnySoloed)
+        .animation(.easeInOut(duration: 0.15), value: isDimmed)
+        .animation(.easeInOut(duration: 0.15), value: isSoloed)
     }
     
     private var muteButton: some View {

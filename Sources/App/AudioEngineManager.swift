@@ -558,67 +558,106 @@ public final class AudioEngineManager: @unchecked Sendable {
         default: break
         }
     }
-    
-    // MARK: - Stem Macro Quick Presets
+     // MARK: - Stem Macro Quick Presets (Click to Activate, Click Again to Toggle Off)
     public func applyAcapella() {
         Haptics.playClick()
-        soloStem(0)
+        if vocalSolo && !vocalMuted && !drumSolo && !bassSolo && !otherSolo {
+            applyResetMix()
+        } else {
+            soloStem(0)
+        }
     }
     
     public func applyInstrumental() {
         Haptics.playClick()
-        vocalSolo = false
-        drumSolo = false
-        bassSolo = false
-        otherSolo = false
-        vocalMuted = true
-        drumMuted = false
-        bassMuted = false
-        otherMuted = false
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
+        let isAlreadyActive = vocalMuted && !drumMuted && !bassMuted && !otherMuted && !anySolo
+        
+        if isAlreadyActive {
+            applyResetMix()
+        } else {
+            vocalSolo = false
+            drumSolo = false
+            bassSolo = false
+            otherSolo = false
+            vocalMuted = true
+            drumMuted = false
+            bassMuted = false
+            otherMuted = false
+            vocalVolume = 1.0
+            drumVolume = 1.0
+            bassVolume = 1.0
+            otherVolume = 1.0
+        }
     }
     
     public func applyDrumless() {
         Haptics.playClick()
-        vocalSolo = false
-        drumSolo = false
-        bassSolo = false
-        otherSolo = false
-        drumMuted = true
-        vocalMuted = false
-        bassMuted = false
-        otherMuted = false
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
+        let isAlreadyActive = drumMuted && !vocalMuted && !bassMuted && !otherMuted && !anySolo
+        
+        if isAlreadyActive {
+            applyResetMix()
+        } else {
+            vocalSolo = false
+            drumSolo = false
+            bassSolo = false
+            otherSolo = false
+            drumMuted = true
+            vocalMuted = false
+            bassMuted = false
+            otherMuted = false
+            vocalVolume = 1.0
+            drumVolume = 1.0
+            bassVolume = 1.0
+            otherVolume = 1.0
+        }
     }
     
     public func applyKaraoke() {
         Haptics.playClick()
-        vocalSolo = false
-        drumSolo = false
-        bassSolo = false
-        otherSolo = false
-        vocalMuted = false
-        drumMuted = false
-        bassMuted = false
-        otherMuted = false
-        vocalVolume = 0.25 // -12 dB lead vocal reduction
-        drumVolume = 1.0
-        bassVolume = 1.0
-        otherVolume = 1.0
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
+        let isAlreadyActive = abs(vocalVolume - 0.25) < 0.05 && !vocalMuted && !drumMuted && !bassMuted && !otherMuted && !anySolo
+        
+        if isAlreadyActive {
+            applyResetMix()
+        } else {
+            vocalSolo = false
+            drumSolo = false
+            bassSolo = false
+            otherSolo = false
+            vocalMuted = false
+            drumMuted = false
+            bassMuted = false
+            otherMuted = false
+            vocalVolume = 0.25 // -12 dB lead vocal reduction
+            drumVolume = 1.0
+            bassVolume = 1.0
+            otherVolume = 1.0
+        }
     }
     
     public func applyDrumAndBass() {
         Haptics.playClick()
-        vocalSolo = false
-        drumSolo = false
-        bassSolo = false
-        otherSolo = false
-        vocalMuted = true
-        drumMuted = false
-        bassMuted = false
-        otherMuted = true
-        vocalVolume = 1.0
-        drumVolume = 1.0
-        bassVolume = 1.0
-        otherVolume = 1.0
+        let anySolo = vocalSolo || drumSolo || bassSolo || otherSolo
+        let isAlreadyActive = vocalMuted && otherMuted && !drumMuted && !bassMuted && !anySolo
+        
+        if isAlreadyActive {
+            applyResetMix()
+        } else {
+            vocalSolo = false
+            drumSolo = false
+            bassSolo = false
+            otherSolo = false
+            vocalMuted = true
+            drumMuted = false
+            bassMuted = false
+            otherMuted = true
+            vocalVolume = 1.0
+            drumVolume = 1.0
+            bassVolume = 1.0
+            otherVolume = 1.0
+        }
     }
     
     public func applyResetMix() {
