@@ -211,8 +211,22 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var currentChunkNumber = 0
     public var totalChunkCount = 0
     public var etaRemainingString = "00:05"
-    public var splitStatusMessage = "ANALYZING STEMS..."
-    public var liveSpeedSubtitle: String = "APPLE SILICON ANE • 0.98s / CHUNK • 5.1x REALTIME"
+    public var splitStatusMessage: String = "ANALYZING STEMS..."
+    public static var systemChipName: String {
+        var size = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        if size > 0 {
+            var machine = [CChar](repeating: 0, count: size)
+            sysctlbyname("machdep.cpu.brand_string", &machine, &size, nil, 0)
+            let brand = String(cString: machine).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !brand.isEmpty {
+                return brand.uppercased()
+            }
+        }
+        return "APPLE SILICON"
+    }
+    
+    public var liveSpeedSubtitle: String = "\(AudioEngineManager.systemChipName) ANE • 0.98s / CHUNK • 5.1x REALTIME"
     private var etaTimer: Timer?
     private var remainingEtaSeconds: Double = 0.0
     private var lastProgressTimestamp: TimeInterval = 0.0
@@ -831,7 +845,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.lastProgressTimestamp = CACurrentMediaTime()
                 let displaySecs = Int(ceil(initialEtaSeconds))
                 self.etaRemainingString = String(format: "%02d:%02d", displaySecs / 60, displaySecs % 60)
-                self.liveSpeedSubtitle = "APPLE SILICON ANE • 0.98s / CHUNK • 5.1x REALTIME"
+                self.liveSpeedSubtitle = "\(AudioEngineManager.systemChipName) ANE • 0.98s / CHUNK • 5.1x REALTIME"
                 self.splitStatusMessage = "DECODING AUDIO TRACK..."
                 if self.isPlaying { self.togglePlayback() }
                 self.startEtaCountdownTimer()
@@ -860,7 +874,8 @@ public final class AudioEngineManager: @unchecked Sendable {
                     }
                     
                     self.liveSpeedSubtitle = String(
-                        format: "APPLE SILICON ANE • %.2fs / CHUNK • %.1fx REALTIME",
+                        format: "%@ ANE • %.2fs / CHUNK • %.1fx REALTIME",
+                        AudioEngineManager.systemChipName,
                         progressInfo.secondsPerChunk,
                         progressInfo.realtimeMultiplier
                     )
