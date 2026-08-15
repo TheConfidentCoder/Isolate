@@ -172,6 +172,7 @@ public struct PlayerView: View {
        private var stemMixerView: some View {
         @Bindable var engine = engineManager
         let anySolo = engine.vocalSolo || engine.drumSolo || engine.bassSolo || engine.otherSolo
+        let anyMuted = engine.vocalMuted || engine.drumMuted || engine.bassMuted || engine.otherMuted
         
         return HStack(spacing: 18) {
             StemChannelView(
@@ -182,6 +183,7 @@ public struct PlayerView: View {
                 isSoloed: $engine.vocalSolo,
                 eqMagnitudes: engine.vocalEQMagnitudes,
                 isAnySoloed: anySolo,
+                isAnyMuted: anyMuted,
                 isPlaying: engine.isPlaying,
                 onToggleMute: { toggleMute(0) },
                 onToggleSolo: { toggleSolo(0) }
@@ -194,6 +196,7 @@ public struct PlayerView: View {
                 isSoloed: $engine.drumSolo,
                 eqMagnitudes: engine.drumEQMagnitudes,
                 isAnySoloed: anySolo,
+                isAnyMuted: anyMuted,
                 isPlaying: engine.isPlaying,
                 onToggleMute: { toggleMute(1) },
                 onToggleSolo: { toggleSolo(1) }
@@ -206,6 +209,7 @@ public struct PlayerView: View {
                 isSoloed: $engine.bassSolo,
                 eqMagnitudes: engine.bassEQMagnitudes,
                 isAnySoloed: anySolo,
+                isAnyMuted: anyMuted,
                 isPlaying: engine.isPlaying,
                 onToggleMute: { toggleMute(2) },
                 onToggleSolo: { toggleSolo(2) }
@@ -218,6 +222,7 @@ public struct PlayerView: View {
                 isSoloed: $engine.otherSolo,
                 eqMagnitudes: engine.otherEQMagnitudes,
                 isAnySoloed: anySolo,
+                isAnyMuted: anyMuted,
                 isPlaying: engine.isPlaying,
                 onToggleMute: { toggleMute(3) },
                 onToggleSolo: { toggleSolo(3) }
@@ -299,6 +304,7 @@ struct StemChannelView: View {
     @Binding var isSoloed: Bool
     let eqMagnitudes: [Float]
     let isAnySoloed: Bool
+    let isAnyMuted: Bool
     let isPlaying: Bool
     var onToggleMute: (() -> Void)? = nil
     var onToggleSolo: (() -> Void)? = nil
@@ -321,8 +327,27 @@ struct StemChannelView: View {
         return String(format: "%.1f dB", db)
     }
     
+    private var hasFocusOutline: Bool {
+        if isAnySoloed {
+            return isSoloed
+        } else if isAnyMuted {
+            return !isMuted && volume > 0.001
+        } else {
+            return false
+        }
+    }
+    
+    private var isDimmed: Bool {
+        if isAnySoloed {
+            return !isSoloed
+        } else if isAnyMuted {
+            return isMuted || volume <= 0.001
+        } else {
+            return false
+        }
+    }
+    
     var body: some View {
-        let isDimmed = (isAnySoloed && !isSoloed) || isMuted
         VStack(spacing: 8) {
             Text(title)
                 .font(.custom("DotGothic16-Regular", size: 16))
@@ -372,10 +397,13 @@ struct StemChannelView: View {
         .opacity(isDimmed ? 0.35 : 1.0)
         .overlay(
             RoundedRectangle(cornerRadius: 0)
-                .stroke(isSoloed ? Color.red.opacity(0.85) : Color.white.opacity(0.1), lineWidth: isSoloed ? 1.5 : 1)
+                .stroke(
+                    hasFocusOutline ? Color.red.opacity(0.85) : Color.white.opacity(0.1),
+                    lineWidth: hasFocusOutline ? 1.5 : 1
+                )
         )
         .animation(.easeInOut(duration: 0.15), value: isDimmed)
-        .animation(.easeInOut(duration: 0.15), value: isSoloed)
+        .animation(.easeInOut(duration: 0.15), value: hasFocusOutline)
     }
     
     private var muteButton: some View {
@@ -1632,7 +1660,13 @@ struct StemMacroPresetsView: View {
     }
     
     private func macroButton(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            if isActive {
+                engineManager.applyResetMix()
+            } else {
+                action()
+            }
+        }) {
             Text(title)
                 .font(.custom("DotGothic16-Regular", size: compact ? 9.5 : 10.5))
                 .fontWeight(.bold)
