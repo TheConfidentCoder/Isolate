@@ -62,29 +62,6 @@ echo "📦 Step 5/6: Preparing DMG staging directory..."
 cp -R "$APP_BUNDLE" "$STAGING_DIR/Isolate.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
-# Add One-Click First Run Quarantine Helper
-cat <<'EOF' > "$STAGING_DIR/Open Isolate (First Run).command"
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_PATH="$DIR/Isolate.app"
-if [ ! -d "$APP_PATH" ]; then
-    APP_PATH="/Applications/Isolate.app"
-fi
-
-echo "=========================================================="
-echo "⚡ ISOLATE: INITIALIZING FIRST RUN"
-echo "=========================================================="
-if [ -d "$APP_PATH" ]; then
-    echo "🔓 Removing macOS Gatekeeper quarantine from Isolate..."
-    xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
-    echo "🚀 Launching Isolate..."
-    open "$APP_PATH"
-else
-    echo "⚠️ Isolate.app not found. Please drag Isolate.app into Applications."
-fi
-EOF
-chmod +x "$STAGING_DIR/Open Isolate (First Run).command"
-
 mkdir -p "$STAGING_DIR/.background"
 cp "$PROJECT_DIR/Assets/dmg_background.png" "$STAGING_DIR/.background/dmg_background.png"
 if [ -f "$PROJECT_DIR/Assets/AppIcon.icns" ]; then
@@ -117,7 +94,7 @@ tell application "Finder"
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set the bounds of container window to {200, 120, 860, 560}
+        set the bounds of container window to {200, 120, 840, 480}
         
         set theViewOptions to the icon view options of container window
         set arrangement of theViewOptions to not arranged
@@ -125,13 +102,10 @@ tell application "Finder"
         set background picture of theViewOptions to file ".background:dmg_background.png"
         
         try
-            set position of item "Isolate.app" of container window to {165, 195}
+            set position of item "Isolate.app" of container window to {160, 180}
         end try
         try
-            set position of item "Applications" of container window to {495, 195}
-        end try
-        try
-            set position of item "Open Isolate (First Run).command" of container window to {330, 310}
+            set position of item "Applications" of container window to {480, 180}
         end try
         
         update without registering applications
