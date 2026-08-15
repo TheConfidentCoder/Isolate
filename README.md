@@ -11,52 +11,27 @@
 
 ## [ 01. HIGHLIGHTS ]
 
-- **4-Stem Neural Isolation**: Surgically separate any song into **Vocals**, **Drums**, **Bass**, and **Other** with Hybrid Demucs v4.
-- **Hardware Mixer Channel Strips**: Dynamic tactile faders, peak LED telemetry, single-click **[M]** Mute and **[S]** Solo routing, and master **[BYPASS]**.
-- **Real-Time 60FPS FFT Spectrum**: Live hardware dot-matrix audio visualizer rendered via Metal & Accelerate DSP.
-- **Double-Click Reset**: Double-click any stem fader or volume readout to snap directly to 100%.
-- **Seamless Stem Export**: One-click multi-track `.wav` or `.m4a` export for seamless import into Logic Pro, Ableton, FL Studio, or Pro Tools.
-- **100% Offline & Private**: Zero cloud dependency. All neural inference runs directly on your Mac's Apple Silicon Neural Engine (ANE).
+- **4-Stem Neural Isolation**: Surgically separate any song into **Vocals**, **Drums**, **Bass**, and **Other** with Hybrid Demucs v4 on Apple Silicon Neural Engine (ANE).
+- **Tactical Hardware Mixer**: Dynamic tactile faders, 1.2s peak-hold clip LEDs, dual decibel (`0.0 dB`) / linear percentage readouts, single-click **[M]** Mute and exclusive **[S]** Solo routing.
+- **Rotary Stereo Pan Dials**: Channel pan knobs (`‹ C ›`, `‹ 42L`, `28R ›`) featuring magnetic haptic center snap.
+- **Top Header Space & Telemetry HUD**: 32-band real-time FFT spectrum visualizer, ANE neural status, tempo / key indicators, and one-click stem macros (`[ ACAPELLA ]`, `[ INSTRUMENTAL ]`, `[ DRUMLESS ]`, `[ KARAOKE ]`, `[ D&B ]`, `[ RESET ]`).
+- **Live A-B Region Looper**: Real-time loop boundary setting on the fly with dedicated hotkeys.
+- **macOS Menu Bar Mini Controller**: Status bar controller with an animated 3-bar equalizer and native completion notifications.
+- **Resilient Multi-Token Library Search**: Instant filtering across track names, artists, and filenames.
+- **Modern macOS 26 & 27 Design**: Squircle app icon and zero-latency Nothing hardware aesthetic.
 
 ---
 
 ## [ 02. INSTALLATION ]
 
-### Option A: Instant 1-Line Install (Zero Prompts • Recommended)
+### Option A: Pre-Built DMG Installer
 
-Run in Terminal to install directly to `/Applications` with automatic quarantine removal:
-```bash
-curl -fsSL https://raw.githubusercontent.com/TheConfidentCoder/Isolate/main/install.sh | bash
-```
+1. Download **`Isolate.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
+2. Drag **`Isolate.app`** to **`Applications`**, then launch.
 
 ---
 
-### Option B: Pre-Built DMG / PKG Installer
-
-1. Download **`Isolate-v1.0.0.dmg`** or **`Isolate-v1.0.0.pkg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
-2. For DMG: Drag **`Isolate.app`** to **`Applications`**, then launch.
-3. For PKG: Run the installer package wizard.
-
-> [!NOTE]  
-> **macOS Gatekeeper First-Launch Quick Fix**  
-> If macOS says *"Apple could not verify Isolate.app is free of malware"*:
-> - **1-Second Terminal Command**:
->   ```bash
->   xattr -cr /Applications/Isolate.app
->   ```
-> - **Or System Settings**: Click **Done** $\to$ Open **System Settings** $\to$ **Privacy & Security** $\to$ Click **Open Anyway** under *Security*.
->
-> 📖 See detailed instructions in [**`INSTALL.md`**](INSTALL.md) and [**`TROUBLESHOOTING.md`**](TROUBLESHOOTING.md).
-
----
-
-### Option C: Homebrew Cask
-
-```bash
-brew install --cask TheConfidentCoder/isolate/isolate
-```
-
-### Option D: Build from Source
+### Option B: Build from Source
 
 #### Prerequisites
 - macOS 14.0 (Sonoma) or newer
@@ -72,7 +47,7 @@ cd Isolate
 xcodegen generate
 
 # 3. Build & Run
-xcodebuild -scheme Isolate -destination 'platform=macOS' build
+xcodebuild -scheme Isolate -configuration Release -destination 'platform=macOS' build
 open build/Release/Isolate.app
 ```
 
@@ -83,12 +58,17 @@ open build/Release/Isolate.app
 | Action | Shortcut | Description |
 | :--- | :--- | :--- |
 | **Play / Pause** | `Space` | Toggle global audio playback |
-| **Bypass Toggle** | `B` | Toggle between raw original mix and active stem mix |
-| **Export Stems** | `⌘E` | Open Stem Export dialog |
-| **Import Audio** | `⌘O` | Open file picker for stem separation |
-| **Toggle Sidebar** | `⌘S` | Show / hide left track library sidebar |
-| **Fader Snap** | `Double-Click` | Double-click fader thumb or volume number to reset to 100 |
-| **Dismiss Modal** | `Esc` | Cancel / dismiss active modal card |
+| **Solo Stem (1 - 4)** | `1` / `2` / `3` / `4` | Exclusive solo for Vocals, Drums, Bass, Other |
+| **Mute Stem (V / D / B / O)** | `V` / `D` / `B` / `O` | Toggle mute for individual stem channels |
+| **Set Loop In / Out** | `[` / `]` | Mark A-B loop start and end points on the fly |
+| **Toggle Loop** | `L` | Toggle active A-B region loop on/off |
+| **Acapella / Instrumental / Reset** | `A` / `I` / `R` | Trigger stem macros immediately |
+| **Bypass Toggle** | `B` | Toggle between raw original master and stem mix |
+| **Shortcut Cheat Sheet HUD** | `?` or `/` | Toggle in-app floating Nothing OS shortcuts card |
+| **Export Stems** | `E` | Export 4-stem multi-format audio bundle |
+| **Import Audio** | `⌘O` | Open file picker for single or batch stem separation |
+| **Fader Reset to 100%** | `Double-Click` | Double-click fader thumb or volume number to reset to unity |
+| **Dismiss / Close** | `Esc` | Cancel / dismiss active modal card |
 
 ---
 
