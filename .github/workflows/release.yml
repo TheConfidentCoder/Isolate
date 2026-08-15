@@ -33,12 +33,14 @@ jobs:
           xcodebuild -scheme Isolate -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -derivedDataPath DerivedData
           mkdir -p build/Release
           cp -R DerivedData/Build/Products/Release/Isolate.app build/Release/Isolate.app
+          codesign --force --deep --sign - build/Release/Isolate.app
 
       - name: Create DMG Disk Image
         run: |
-          mkdir -p dmg_root
+          mkdir -p dmg_root/.background
           cp -R build/Release/Isolate.app dmg_root/
           ln -s /Applications dmg_root/Applications
+          cp Assets/dmg_background.png dmg_root/.background/
           hdiutil create -volname "Isolate" -srcfolder dmg_root -ov -format UDZO Isolate.dmg
           rm -rf dmg_root
 
@@ -49,3 +51,15 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+          body: |
+            ### ⚡ Isolate: 4-Stem Neural Audio Isolation
+            
+            #### 📦 Installation:
+            1. Download and open **`Isolate.dmg`**.
+            2. Drag **`Isolate.app`** into **`Applications`**.
+            
+            > [!IMPORTANT]
+            > **First-Launch Gatekeeper Note**:
+            > Because Isolate is an independent open-source app, macOS Gatekeeper may show a security notice on first launch.
+            > - **Option 1**: Right-click (or Control-click) `Isolate.app` in Applications → click **Open** → click **Open**.
+            > - **Option 2**: In Terminal, run: `xattr -cr /Applications/Isolate.app`
