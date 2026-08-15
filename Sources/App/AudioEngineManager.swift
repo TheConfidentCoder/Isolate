@@ -188,6 +188,7 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var originalWaveformAmplitudes: [Float] = Array(repeating: 0.05, count: 30)
     
     public var masterEQMagnitudes: [Float] = Array(repeating: 0, count: 32)
+    private var smoothedMasterEQ: [Float] = Array(repeating: 0, count: 32)
     public var vocalEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
     public var drumEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
     public var bassEQMagnitudes: [Float] = Array(repeating: 0, count: 7)
@@ -269,55 +270,64 @@ public final class AudioEngineManager: @unchecked Sendable {
         
         // Master Output Tap: Waveform and Master 32-Band FFT
         engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in
-            guard let self = self, self.isPlaying else { return }
-            guard let channelData = buffer.floatChannelData?[0] else { return }
+        guard let self = self, self.isPlaying else { return }
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        
+        let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
+        var bands = [Float](repeating: 0, count: 32)
+        
+        // Logarithmic 32-band distribution across 25Hz - 20,000Hz
+        let fftCount = magnitudes.count // 512 bins
+        let sr = format.sampleRate > 0 ? Float(format.sampleRate) : 44100.0
+        let nyquist = sr / 2.0
+        let binHz = nyquist / Float(fftCount)
+        let minFreq: Float = 28.0
+        let maxFreq: Float = min(nyquist, 19000.0)
+        
+        for i in 0..<32 {
+            let fLow = minFreq * pow(maxFreq / minFreq, Float(i) / 32.0)
+            let fHigh = minFreq * pow(maxFreq / minFreq, Float(i + 1) / 32.0)
             
-            let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
-            var bands = [Float](repeating: 0, count: 32)
+            let binLow = max(0, min(fftCount - 1, Int(floor(fLow / binHz))))
+            let binHigh = max(binLow, min(fftCount - 1, Int(ceil(fHigh / binHz))))
             
-            // Logarithmic 32-band distribution across 25Hz - 20,000Hz
-            let fftCount = magnitudes.count // 512 bins
-            let sr = format.sampleRate > 0 ? Float(format.sampleRate) : 44100.0
-            let nyquist = sr / 2.0
-            let binHz = nyquist / Float(fftCount)
-            let minFreq: Float = 28.0
-            let maxFreq: Float = min(nyquist, 19000.0)
-            
-            for i in 0..<32 {
-                let fLow = minFreq * pow(maxFreq / minFreq, Float(i) / 32.0)
-                let fHigh = minFreq * pow(maxFreq / minFreq, Float(i + 1) / 32.0)
-                
-                let binLow = max(0, min(fftCount - 1, Int(floor(fLow / binHz))))
-                let binHigh = max(binLow, min(fftCount - 1, Int(ceil(fHigh / binHz))))
-                
-                var maxMag: Float = 0.0
-                var sumMag: Float = 0.0
-                var count = 0
-                for bin in binLow...binHigh {
-                    let m = magnitudes[bin]
-                    maxMag = max(maxMag, m)
-                    sumMag += m
-                    count += 1
-                }
-                
-                let avgMag = count > 0 ? sumMag / Float(count) : 0.0
-                let combined = (maxMag * 0.75 + avgMag * 0.25)
-                // Equal-loudness curve boost for mid/high frequencies
-                let eqCurve = 1.0 + Float(i) * 0.05
-                let scaled = combined * eqCurve * 32.0
-                bands[i] = min(1.0, max(0.0, pow(scaled, 0.7)))
+            var maxMag: Float = 0.0
+            var sumMag: Float = 0.0
+            var count = 0
+            for bin in binLow...binHigh {
+                let m = magnitudes[bin]
+                maxMag = max(maxMag, m)
+                sumMag += m
+                count += 1
             }
             
-            let now = CACurrentMediaTime()
-            if now - self.lastMasterUIUpdateTime > 0.016 {
-                self.lastMasterUIUpdateTime = now
-                DispatchQueue.main.async {
-                    self.masterEQMagnitudes = bands
-                }
-            }
+            let avgMag = count > 0 ? sumMag / Float(count) : 0.0
+            let combined = (maxMag * 0.75 + avgMag * 0.25)
+            // Equal-loudness curve boost for mid/high frequencies
+            let eqCurve = 1.0 + Float(i) * 0.05
+            let scaled = combined * eqCurve * 32.0
+            let targetMag = min(1.0, max(0.0, pow(scaled, 0.7)))
             
-            self.processWaveform(buffer: buffer, isMaster: true)
+            // Apple-grade fluid transient attack & natural ballistic gravity release
+            let current = self.smoothedMasterEQ[i]
+            if targetMag > current {
+                self.smoothedMasterEQ[i] = current * 0.15 + targetMag * 0.85
+            } else {
+                self.smoothedMasterEQ[i] = current * 0.78 + targetMag * 0.22
+            }
+            bands[i] = self.smoothedMasterEQ[i]
         }
+        
+        let now = CACurrentMediaTime()
+        if now - self.lastMasterUIUpdateTime > 0.016 {
+            self.lastMasterUIUpdateTime = now
+            DispatchQueue.main.async {
+                self.masterEQMagnitudes = bands
+            }
+        }
+        
+        self.processWaveform(buffer: buffer, isMaster: true)
+    }
         
         // Stems Tap for Ghost Waveform & Individual EQs
         vocalPlayer.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, time in

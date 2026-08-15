@@ -1511,45 +1511,49 @@ struct HeaderCenterTelemetryModule: View {
     }
 }
 
-// MARK: - 32-Band Dot-Matrix FFT Spectrum Visualizer
+// MARK: - 32-Band Dot-Matrix FFT Spectrum Visualizer (100% Full-Width & Apple-Grade Fluid Physics)
 struct Spectrum32BandView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     
     var body: some View {
         GeometryReader { geo in
             let count = 32
-            let spacing: CGFloat = max(1.5, min(4.0, (geo.size.width * 0.08) / CGFloat(count)))
+            let spacing: CGFloat = max(1.5, min(3.5, geo.size.width * 0.003))
             let totalSpacing = CGFloat(count - 1) * spacing
-            let barW = max(2.5, min(16.0, (geo.size.width - totalSpacing) / CGFloat(count)))
-            let blockCount = 8
-            let blockH: CGFloat = max(3.5, min(6.0, (geo.size.height - CGFloat(blockCount - 1) * 2.0) / CGFloat(blockCount)))
+            let barW = max(2.0, (geo.size.width - totalSpacing) / CGFloat(count))
+            let blockCount = 10
             let blockSpacing: CGFloat = 1.8
+            let blockH = max(2.5, (geo.size.height - CGFloat(blockCount - 1) * blockSpacing) / CGFloat(blockCount))
             
             HStack(spacing: spacing) {
                 ForEach(0..<count, id: \.self) { i in
                     let mag = i < engineManager.masterEQMagnitudes.count ? engineManager.masterEQMagnitudes[i] : 0.0
                     let scaled = engineManager.isPlaying ? mag : 0.0
-                    let litBlocks = engineManager.isPlaying ? (scaled > 0.03 ? min(blockCount, Int(ceil(Double(scaled) * Double(blockCount)))) : 0) : 0
+                    let continuousHeight = Double(scaled) * Double(blockCount)
                     
                     VStack(spacing: blockSpacing) {
                         ForEach((0..<blockCount).reversed(), id: \.self) { b in
-                            let isLit = b < litBlocks
+                            let blockIndex = Double(b)
+                            let isFullyLit = blockIndex + 1.0 <= continuousHeight
+                            let isPartiallyLit = !isFullyLit && blockIndex < continuousHeight
+                            let fraction = isPartiallyLit ? max(0.25, continuousHeight - blockIndex) : (isFullyLit ? 1.0 : 0.0)
+                            
                             let isHigh = i >= 22
                             let isMid = i >= 8 && i < 22
                             
-                            let litColor: Color = isHigh
-                                ? Color(white: 0.95)
-                                : (isMid ? Color(red: 1.0, green: 0.35, blue: 0.35) : Color.red)
+                            let baseColor: Color = isHigh
+                                ? Color(white: 0.96)
+                                : (isMid ? Color(red: 1.0, green: 0.36, blue: 0.36) : Color.red)
                             
-                            RoundedRectangle(cornerRadius: 0.5)
-                                .fill(isLit ? litColor : Color.white.opacity(0.04))
+                            RoundedRectangle(cornerRadius: 1.0)
+                                .fill(fraction > 0 ? baseColor.opacity(fraction) : Color.white.opacity(0.04))
                                 .frame(width: barW, height: blockH)
                         }
                     }
-                    .animation(.spring(response: 0.09, dampingFraction: 0.6, blendDuration: 0.01), value: litBlocks)
+                    .animation(.spring(response: 0.08, dampingFraction: 0.7, blendDuration: 0.01), value: continuousHeight)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
         }
     }
 }

@@ -16,6 +16,8 @@ struct LibraryView: View {
     
     @State private var isSettingsHovered = false
     @FocusState private var isSearchFocused: Bool
+    @State private var searchBarGlobalFrame: CGRect = .zero
+    @State private var clickMonitor: Any? = nil
     
     // Custom Nothing Scrollbar State
     @State private var containerHeight: CGFloat = 0
@@ -155,6 +157,33 @@ struct LibraryView: View {
                 }
             }
         }
+        .onAppear {
+            if clickMonitor == nil {
+                clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+                    guard isSearchFocused else { return event }
+                    if let window = NSApp.keyWindow {
+                        let loc = event.locationInWindow
+                        let windowH = window.frame.height
+                        let flippedY = windowH - loc.y
+                        let clickPoint = CGPoint(x: loc.x, y: flippedY)
+                        
+                        if !searchBarGlobalFrame.isEmpty && !searchBarGlobalFrame.contains(clickPoint) {
+                            DispatchQueue.main.async {
+                                window.makeFirstResponder(nil)
+                                isSearchFocused = false
+                            }
+                        }
+                    }
+                    return event
+                }
+            }
+        }
+        .onDisappear {
+            if let monitor = clickMonitor {
+                NSEvent.removeMonitor(monitor)
+                clickMonitor = nil
+            }
+        }
     }
     
     private var headerView: some View {
@@ -201,6 +230,7 @@ struct LibraryView: View {
                 .focused($isSearchFocused)
                 .onSubmit {
                     isSearchFocused = false
+                    NSApp.keyWindow?.makeFirstResponder(nil)
                 }
             
             if !searchText.isEmpty {
@@ -220,6 +250,17 @@ struct LibraryView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 3)
                 .stroke(isSearchFocused ? Color.red.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        searchBarGlobalFrame = geo.frame(in: .global)
+                    }
+                    .onChange(of: geo.frame(in: .global)) { _, newFrame in
+                        searchBarGlobalFrame = newFrame
+                    }
+            }
         )
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
