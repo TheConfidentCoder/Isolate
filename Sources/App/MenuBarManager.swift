@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import UserNotifications
+@preconcurrency import UserNotifications
 
 @MainActor
 public final class MenuBarManager: NSObject, NSMenuDelegate {
@@ -149,7 +149,7 @@ public final class MenuBarManager: NSObject, NSMenuDelegate {
         
         if !engine.trackArtist.isEmpty && engine.trackArtist != "Isolate" {
             let artistItem = NSMenuItem(
-                title: "\(engine.trackArtist) • \(engine.trackBPM) • \(engine.trackMusicalKey)",
+                title: "\(engine.trackArtist) • \(engine.effectiveBPM) • \(engine.effectiveMusicalKey)",
                 action: nil,
                 keyEquivalent: ""
             )

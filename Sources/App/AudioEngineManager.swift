@@ -52,6 +52,43 @@ public final class AudioEngineManager: @unchecked Sendable {
     public var trackAudioFormat: String = "WAV"
     public var trackBPM: String = "124.0 BPM"
     public var trackMusicalKey: String = "F# MINOR"
+    
+    // Dynamic real-time transposed musical key based on pitchShiftSemitones
+    public var effectiveMusicalKey: String {
+        let st = Int(pitchShiftSemitones.rounded())
+        if st == 0 || trackMusicalKey.isEmpty {
+            return trackMusicalKey
+        }
+        
+        let chromaticScaleSharp = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        let chromaticScaleFlat = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
+        
+        let parts = trackMusicalKey.components(separatedBy: " ")
+        guard let root = parts.first else { return trackMusicalKey }
+        let mode = parts.dropFirst().joined(separator: " ")
+        
+        var currentIndex = chromaticScaleSharp.firstIndex(of: root.uppercased())
+        if currentIndex == nil {
+            currentIndex = chromaticScaleFlat.firstIndex(where: { $0.uppercased() == root.uppercased() })
+        }
+        
+        guard let idx = currentIndex else { return trackMusicalKey }
+        var newIdx = (idx + st) % 12
+        if newIdx < 0 { newIdx += 12 }
+        
+        let newRoot = chromaticScaleSharp[newIdx]
+        return mode.isEmpty ? newRoot : "\(newRoot) \(mode)"
+    }
+    
+    // Dynamic real-time scaled BPM based on playbackRate
+    public var effectiveBPM: String {
+        guard let baseVal = Double(trackBPM.replacingOccurrences(of: " BPM", with: "").trimmingCharacters(in: .whitespacesAndNewlines)), baseVal > 0 else {
+            return trackBPM
+        }
+        let scaled = baseVal * playbackRate
+        return String(format: "%.1f BPM", scaled)
+    }
+    
     public var detailedTimecode: String = "00:00.000 / -00:00.000"
     public var albumArt: NSImage?
     public var playbackProgress: Double = 0.0
@@ -237,14 +274,38 @@ public final class AudioEngineManager: @unchecked Sendable {
             
             let magnitudes = self.fftAnalyzer.computeFFT(buffer: channelData)
             var bands = [Float](repeating: 0, count: 32)
-            let binsPerBand = max(1, magnitudes.count / 32)
+            
+            // Logarithmic 32-band distribution across 25Hz - 20,000Hz
+            let fftCount = magnitudes.count // 512 bins
+            let sr = format.sampleRate > 0 ? Float(format.sampleRate) : 44100.0
+            let nyquist = sr / 2.0
+            let binHz = nyquist / Float(fftCount)
+            let minFreq: Float = 28.0
+            let maxFreq: Float = min(nyquist, 19000.0)
+            
             for i in 0..<32 {
-                var sum: Float = 0
-                for j in 0..<binsPerBand {
-                    let idx = i * binsPerBand + j
-                    if idx < magnitudes.count { sum += magnitudes[idx] }
+                let fLow = minFreq * pow(maxFreq / minFreq, Float(i) / 32.0)
+                let fHigh = minFreq * pow(maxFreq / minFreq, Float(i + 1) / 32.0)
+                
+                let binLow = max(0, min(fftCount - 1, Int(floor(fLow / binHz))))
+                let binHigh = max(binLow, min(fftCount - 1, Int(ceil(fHigh / binHz))))
+                
+                var maxMag: Float = 0.0
+                var sumMag: Float = 0.0
+                var count = 0
+                for bin in binLow...binHigh {
+                    let m = magnitudes[bin]
+                    maxMag = max(maxMag, m)
+                    sumMag += m
+                    count += 1
                 }
-                bands[i] = sum / Float(binsPerBand)
+                
+                let avgMag = count > 0 ? sumMag / Float(count) : 0.0
+                let combined = (maxMag * 0.75 + avgMag * 0.25)
+                // Equal-loudness curve boost for mid/high frequencies
+                let eqCurve = 1.0 + Float(i) * 0.05
+                let scaled = combined * eqCurve * 32.0
+                bands[i] = min(1.0, max(0.0, pow(scaled, 0.7)))
             }
             
             let now = CACurrentMediaTime()

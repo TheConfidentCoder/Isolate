@@ -15,6 +15,7 @@ struct LibraryView: View {
     var onOpenSettings: (() -> Void)? = nil
     
     @State private var isSettingsHovered = false
+    @FocusState private var isSearchFocused: Bool
     
     // Custom Nothing Scrollbar State
     @State private var containerHeight: CGFloat = 0
@@ -147,6 +148,8 @@ struct LibraryView: View {
             .background(Color.black.opacity(0.85))
             .contentShape(Rectangle())
             .onTapGesture {
+                isSearchFocused = false
+                NSApp.keyWindow?.makeFirstResponder(nil)
                 if activeMenuTrackID != nil {
                     activeMenuTrackID = nil
                 }
@@ -164,6 +167,8 @@ struct LibraryView: View {
             
             Button(action: {
                 Haptics.playClick()
+                isSearchFocused = false
+                NSApp.keyWindow?.makeFirstResponder(nil)
                 importTrack()
             }) {
                 HStack(spacing: 4) {
@@ -187,12 +192,16 @@ struct LibraryView: View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
-                .foregroundColor(.gray)
+                .foregroundColor(isSearchFocused ? .red : .gray)
             
             TextField("SEARCH STEMS...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.custom("DotGothic16-Regular", size: 11.5))
                 .foregroundColor(.white)
+                .focused($isSearchFocused)
+                .onSubmit {
+                    isSearchFocused = false
+                }
             
             if !searchText.isEmpty {
                 Button(action: {
@@ -207,10 +216,10 @@ struct LibraryView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.04))
+        .background(Color.white.opacity(isSearchFocused ? 0.08 : 0.04))
         .overlay(
             RoundedRectangle(cornerRadius: 3)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(isSearchFocused ? Color.red.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1)
         )
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -269,16 +278,22 @@ struct LibraryView: View {
                             }
                         },
                         onSelect: {
+                            isSearchFocused = false
+                            NSApp.keyWindow?.makeFirstResponder(nil)
                             activeMenuTrackID = nil
                             Task {
                                 await engineManager.loadTrack(track)
                             }
                         },
                         onRename: {
+                            isSearchFocused = false
+                            NSApp.keyWindow?.makeFirstResponder(nil)
                             activeMenuTrackID = nil
                             onRenameTrack?(track)
                         },
                         onDelete: {
+                            isSearchFocused = false
+                            NSApp.keyWindow?.makeFirstResponder(nil)
                             activeMenuTrackID = nil
                             onDeleteTrack?(track)
                         }
@@ -298,6 +313,8 @@ struct LibraryView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            isSearchFocused = false
+            NSApp.keyWindow?.makeFirstResponder(nil)
             if activeMenuTrackID != nil {
                 activeMenuTrackID = nil
             }

@@ -1402,10 +1402,10 @@ struct HeaderCenterTelemetryModule: View {
                     
                     if isWide {
                         HStack(spacing: 12) {
-                            Text("• \(engineManager.trackBPM)")
+                            Text("• \(engineManager.effectiveBPM)")
                                 .font(.custom("DotGothic16-Regular", size: 10))
                                 .foregroundColor(.white)
-                            Text("• \(engineManager.trackMusicalKey)")
+                            Text("• \(engineManager.effectiveMusicalKey)")
                                 .font(.custom("DotGothic16-Regular", size: 10))
                                 .foregroundColor(.red)
                             Text("• \(engineManager.trackSampleRate) • \(engineManager.trackBitDepth)")
@@ -1459,26 +1459,33 @@ struct HeaderCenterTelemetryModule: View {
                 // Content View
                 if isWide {
                     // Wide 16-inch screen layout
-                    HStack(spacing: 14) {
+                    if activeModeIndex == 0 {
                         Spectrum32BandView()
-                            .frame(maxWidth: .infinity)
-                        
-                        Divider()
-                            .background(Color.white.opacity(0.08))
-                        
-                        if activeModeIndex == 0 || activeModeIndex == 1 {
-                            StemMacroPresetsView(compact: false)
-                                .frame(width: 320)
-                        } else if activeModeIndex == 2 {
-                            StudioTelemetryHUDView()
-                                .frame(width: 360)
-                        } else {
-                            StemBalanceHUDView()
-                                .frame(width: 320)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 6)
+                    } else {
+                        HStack(spacing: 14) {
+                            Spectrum32BandView()
+                                .frame(maxWidth: .infinity)
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.08))
+                            
+                            if activeModeIndex == 1 {
+                                StemMacroPresetsView(compact: false)
+                                    .frame(width: 320)
+                            } else if activeModeIndex == 2 {
+                                StudioTelemetryHUDView()
+                                    .frame(width: 360)
+                            } else {
+                                StemBalanceHUDView()
+                                    .frame(width: 320)
+                            }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 6)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
                 } else {
                     // Medium screen layout
                     Group {
@@ -1511,20 +1518,18 @@ struct Spectrum32BandView: View {
     var body: some View {
         GeometryReader { geo in
             let count = 32
-            let spacing: CGFloat = 2.5
+            let spacing: CGFloat = max(1.5, min(4.0, (geo.size.width * 0.08) / CGFloat(count)))
             let totalSpacing = CGFloat(count - 1) * spacing
-            let barW = max(2.5, min(14.0, (geo.size.width - totalSpacing) / CGFloat(count)))
+            let barW = max(2.5, min(16.0, (geo.size.width - totalSpacing) / CGFloat(count)))
             let blockCount = 8
-            let blockH: CGFloat = 4.0
-            let blockSpacing: CGFloat = 1.6
+            let blockH: CGFloat = max(3.5, min(6.0, (geo.size.height - CGFloat(blockCount - 1) * 2.0) / CGFloat(blockCount)))
+            let blockSpacing: CGFloat = 1.8
             
             HStack(spacing: spacing) {
                 ForEach(0..<count, id: \.self) { i in
                     let mag = i < engineManager.masterEQMagnitudes.count ? engineManager.masterEQMagnitudes[i] : 0.0
-                    let sensitivity = Float(AppSettings.shared.waveformSensitivity)
-                    let boost = 1.1 + Float(i) * 0.06
-                    let scaled = engineManager.isPlaying ? min(1.0, mag * sensitivity * boost) : 0.0
-                    let litBlocks = engineManager.isPlaying ? (scaled > 0.02 ? min(blockCount, Int(ceil(Double(scaled) * Double(blockCount)))) : 0) : 0
+                    let scaled = engineManager.isPlaying ? mag : 0.0
+                    let litBlocks = engineManager.isPlaying ? (scaled > 0.03 ? min(blockCount, Int(ceil(Double(scaled) * Double(blockCount)))) : 0) : 0
                     
                     VStack(spacing: blockSpacing) {
                         ForEach((0..<blockCount).reversed(), id: \.self) { b in
@@ -1534,14 +1539,14 @@ struct Spectrum32BandView: View {
                             
                             let litColor: Color = isHigh
                                 ? Color(white: 0.95)
-                                : (isMid ? Color(red: 1.0, green: 0.32, blue: 0.32) : Color.red)
+                                : (isMid ? Color(red: 1.0, green: 0.35, blue: 0.35) : Color.red)
                             
                             RoundedRectangle(cornerRadius: 0.5)
                                 .fill(isLit ? litColor : Color.white.opacity(0.04))
                                 .frame(width: barW, height: blockH)
                         }
                     }
-                    .animation(.spring(response: 0.12, dampingFraction: 0.65, blendDuration: 0.02), value: litBlocks)
+                    .animation(.spring(response: 0.09, dampingFraction: 0.6, blendDuration: 0.01), value: litBlocks)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -1642,7 +1647,7 @@ struct StudioTelemetryHUDView: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            telemetryBox(label: "TEMPO / KEY", value: "\(engineManager.trackBPM) • \(engineManager.trackMusicalKey)")
+            telemetryBox(label: "TEMPO / KEY", value: "\(engineManager.effectiveBPM) • \(engineManager.effectiveMusicalKey)")
             telemetryBox(label: "AUDIO FORMAT", value: "\(engineManager.trackBitDepth) • \(engineManager.trackSampleRate)")
             telemetryBox(label: "TIMECODE", value: engineManager.detailedTimecode)
             telemetryBox(label: "NEURAL ENGINE", value: "DEMUCS v4 • ANE ACTIVE")
