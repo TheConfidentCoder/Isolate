@@ -36,7 +36,11 @@ jobs:
 
       - name: Create DMG Disk Image
         run: |
-          hdiutil create -volname "Isolate" -srcfolder build/Release/Isolate.app -ov -format UDZO Isolate.dmg
+          mkdir -p dmg_root
+          cp -R build/Release/Isolate.app dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "Isolate" -srcfolder dmg_root -ov -format UDZO Isolate.dmg
+          rm -rf dmg_root
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
