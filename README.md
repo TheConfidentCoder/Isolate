@@ -4,34 +4,65 @@
 > Powered by Demucs v4 Neural Engine CoreML & Nothing OS hardware aesthetics.
 
 [![macOS 14.0+](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Sequoia-black?style=for-the-badge&logo=apple)](https://github.com/TheConfidentCoder/Isolate)
-[![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%20%2F%20M2%20%2F%20M3%20%2F%20M4%20Accelerated-red?style=for-the-badge)](https://github.com/TheConfidentCoder/Isolate)
+[![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%20%2F%20M2%20%2F%20M3%20%2F%20M4%20%2F%20M5-red?style=for-the-badge)](https://github.com/TheConfidentCoder/Isolate)
+[![Latest Release](https://img.shields.io/github/v/release/TheConfidentCoder/Isolate?style=for-the-badge&color=white)](https://github.com/TheConfidentCoder/Isolate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-white?style=for-the-badge)](LICENSE)
 
 ---
 
 ## [ 01. HIGHLIGHTS ]
 
-- **4-Stem Neural Isolation**: Surgically separate any song into **Vocals**, **Drums**, **Bass**, and **Other** with Hybrid Demucs v4 on Apple Silicon Neural Engine (ANE).
-- **Tactical Hardware Mixer**: Dynamic tactile faders, 1.2s peak-hold clip LEDs, dual decibel (`0.0 dB`) / linear percentage readouts, single-click **[M]** Mute and exclusive **[S]** Solo routing.
+- **4-Stem Neural Isolation**: Surgically separate any track into **Vocals**, **Drums**, **Bass**, and **Other** with Hybrid Demucs v4 on Apple Silicon Neural Engine (ANE / Metal CoreML).
+- **Tactical Hardware Mixer**: Dynamic tactile faders, 1.2s peak-hold clip LEDs, dual decibel (`0.0 dB`) / linear percentage readouts, single-click **[M]** Mute, and exclusive **[S]** Solo routing.
 - **Rotary Stereo Pan Dials**: Channel pan knobs (`‹ C ›`, `‹ 42L`, `28R ›`) featuring magnetic haptic center snap.
-- **Top Header Space & Telemetry HUD**: 32-band real-time FFT spectrum visualizer, ANE neural status, tempo / key indicators, and one-click stem macros (`[ ACAPELLA ]`, `[ INSTRUMENTAL ]`, `[ DRUMLESS ]`, `[ KARAOKE ]`, `[ D&B ]`, `[ RESET ]`).
-- **Live A-B Region Looper**: Real-time loop boundary setting on the fly with dedicated hotkeys.
+- **Top Header Space & Telemetry HUD**: 32-band real-time FFT spectrum visualizer, ANE neural status, chip telemetry (M1–M5 / A18 Pro), tempo / key indicators, and one-click stem macro toggles (`[ ACAPELLA ]`, `[ INSTRUMENTAL ]`, `[ DRUMLESS ]`, `[ KARAOKE ]`, `[ D&B ]`, `[ RESET ]`).
+- **Live A-B Region Looper**: Real-time loop boundary setting on the fly with dedicated hotkeys (`[` and `]`).
 - **macOS Menu Bar Mini Controller**: Status bar controller with an animated 3-bar equalizer and native completion notifications.
 - **Resilient Multi-Token Library Search**: Instant filtering across track names, artists, and filenames.
 - **Modern macOS 26 & 27 Design**: Squircle app icon and zero-latency Nothing hardware aesthetic.
 
 ---
 
-## [ 02. INSTALLATION ]
+## [ 02. INSTALLATION & PACKAGES ]
 
-### Option A: Pre-Built DMG Installer
+### Option A: Instant 1-Line Terminal Install (Recommended)
 
-1. Download **`Isolate.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
-2. Drag **`Isolate.app`** to **`Applications`**, then launch.
+Installs `Isolate.app` directly into `/Applications` and automatically removes the macOS quarantine attribute:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TheConfidentCoder/Isolate/main/install.sh | bash
+```
 
 ---
 
-### Option B: Build from Source
+### Option B: Homebrew Cask
+
+```bash
+brew install --cask TheConfidentCoder/isolate/isolate
+```
+
+Or tap the repository directly:
+```bash
+brew tap TheConfidentCoder/isolate https://github.com/TheConfidentCoder/Isolate
+brew install --cask isolate
+```
+
+---
+
+### Option C: Pre-Built DMG Installer
+
+1. Download **`Isolate.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
+2. Open the disk image and drag **`Isolate.app`** into **`Applications`**.
+3. Launch `Isolate.app`.
+
+> [!NOTE]  
+> If macOS displays *"Apple could not verify Isolate.app is free of malware"*:
+> - **Option 1 (Instant Fix)**: Run `xattr -cr /Applications/Isolate.app` in Terminal.
+> - **Option 2 (System Settings)**: Open **System Settings** → **Privacy & Security** → click **Open Anyway**.
+
+---
+
+### Option D: Build from Source
 
 #### Prerequisites
 - macOS 14.0 (Sonoma) or newer
@@ -93,6 +124,8 @@ Isolate/
 │   └── Resources/
 │       ├── DotGothic16-Regular.ttf # Nothing OS dot-matrix typography
 │       └── HTDemucs.mlmodelc/      # Quantized Demucs CoreML Neural Engine model
+├── Casks/
+│   └── isolate.rb                  # Official Homebrew Cask formula
 ├── scripts/
 │   ├── package_release.sh          # Automated Release DMG & ZIP builder
 │   └── generate_assets.swift       # Nothing OLED DMG wallpaper & icon generator

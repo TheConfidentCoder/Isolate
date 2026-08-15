@@ -15,8 +15,8 @@ targets:
         CFBundleIdentifier: com.isolate.Isolate
         CFBundleName: Isolate
         CFBundlePackageType: APPL
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.2.5"
+        CFBundleVersion: "1.2.5"
         CFBundleIconFile: AppIcon
         LSMinimumSystemVersion: "14.0"
         NSHighResolutionCapable: true

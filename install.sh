@@ -19,7 +19,7 @@ echo -e "${WHITE}  :::  '::::::.  :::   ::: :::         :::::::::    :::      ':
 echo -e "${WHITE}  :::       :::  :::   ::: :::        :::     :::   :::           :::  ${NC}"
 echo -e "${WHITE}  :::  '::::::'  ':::::::  ::::::::: :::       :::  :::      '::::::'  ${NC}"
 echo -e "${GRAY}  ───────────────────────────────────────────────────────────────────${NC}"
-echo -e "${WHITE}  ISOLATE v1.0.0 • 4-STEM DEMUCS NEURAL ENGINE ACCELERATOR FOR macOS${NC}"
+echo -e "${WHITE}  ISOLATE • 4-STEM DEMUCS NEURAL ENGINE ACCELERATOR FOR macOS${NC}"
 echo -e "${GRAY}  ───────────────────────────────────────────────────────────────────${NC}"
 echo ""
 
@@ -33,7 +33,7 @@ if [ "$OS" != "Darwin" ]; then
 fi
 
 if [ "$ARCH" != "arm64" ]; then
-    echo -e "${RED}⚠️ Note: Isolate is optimized for Apple Silicon (M1/M2/M3/M4) Neural Engines.${NC}"
+    echo -e "${RED}⚠️ Note: Isolate is optimized for Apple Silicon (M1/M2/M3/M4/M5) Neural Engines.${NC}"
 fi
 
 # 2. Preparation
@@ -42,24 +42,25 @@ APP_TARGET="$INSTALL_DIR/Isolate.app"
 TEMP_DIR=$(mktemp -d /tmp/isolate_install.XXXXXX)
 
 cleanup() {
+    if [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ]; then
+        hdiutil detach "$MOUNT_DIR" -force 2>/dev/null || true
+    fi
     rm -rf "$TEMP_DIR"
 }
 trap cleanup EXIT
 
-echo -e "${WHITE}⚡ [1/4] Fetching latest release DMG from GitHub...${NC}"
-RELEASE_URL="https://github.com/TheConfidentCoder/Isolate/releases/latest/download/Isolate.dmg"
+echo -e "${WHITE}⚡ [1/4] Fetching latest release from GitHub...${NC}"
+DMG_URL="https://github.com/TheConfidentCoder/Isolate/releases/latest/download/Isolate.dmg"
 DMG_FILE="$TEMP_DIR/Isolate.dmg"
-MOUNT_POINT="$TEMP_DIR/mnt"
-mkdir -p "$MOUNT_POINT"
 
-curl -fL "$RELEASE_URL" -o "$DMG_FILE" --progress-bar
+curl -fL "$DMG_URL" -o "$DMG_FILE" --progress-bar
 
-echo -e "${WHITE}📦 [2/4] Mounting Isolate disk image...${NC}"
-hdiutil attach "$DMG_FILE" -nobrowse -readonly -mountpoint "$MOUNT_POINT" -quiet
+echo -e "${WHITE}📦 [2/4] Mounting DMG disk image...${NC}"
+MOUNT_OUT=$(hdiutil attach -nobrowse -readonly "$DMG_FILE")
+MOUNT_DIR=$(echo "$MOUNT_OUT" | grep -o '/Volumes/.*' | head -n 1)
 
-if [ ! -d "$MOUNT_POINT/Isolate.app" ]; then
-    echo -e "${RED}❌ Error: Could not locate Isolate.app bundle in disk image.${NC}"
-    hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
+if [ -z "$MOUNT_DIR" ] || [ ! -d "$MOUNT_DIR/Isolate.app" ]; then
+    echo -e "${RED}❌ Error: Could not mount Isolate.dmg or locate Isolate.app bundle.${NC}"
     exit 1
 fi
 
@@ -69,8 +70,10 @@ if [ -d "$APP_TARGET" ]; then
     rm -rf "$APP_TARGET"
 fi
 
-cp -R "$MOUNT_POINT/Isolate.app" "$INSTALL_DIR/"
-hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
+cp -R "$MOUNT_DIR/Isolate.app" "$INSTALL_DIR/"
+
+hdiutil detach "$MOUNT_DIR" -quiet || hdiutil detach "$MOUNT_DIR" -force -quiet
+MOUNT_DIR=""
 
 echo -e "${WHITE}🔓 [4/4] Removing Gatekeeper quarantine attribute...${NC}"
 xattr -cr "$APP_TARGET" 2>/dev/null || true

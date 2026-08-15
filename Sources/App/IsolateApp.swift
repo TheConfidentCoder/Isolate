@@ -101,6 +101,13 @@ struct IsolateApp: App {
             var processedCount = 0
             var lastTitle = ""
             for url in audioURLs {
+                let isSecScoped = url.startAccessingSecurityScopedResource()
+                defer {
+                    if isSecScoped {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                
                 let path = url.path
                 let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
                 if let existing = try? modelContext.fetch(descriptor).first {

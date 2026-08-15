@@ -2,6 +2,7 @@ import Foundation
 import CoreML
 @preconcurrency import AVFoundation
 import Accelerate
+import AudioToolbox
 
 public enum DemucsError: LocalizedError, Sendable {
     case modelNotFound(String)
@@ -92,51 +93,79 @@ public actor DemucsEngine {
     public func loadModelIfNeeded() async throws {
         if model != nil { return }
         
-        // 1. Check in Bundle.main (Resources)
-        if let bundleCompiledURL = Bundle.main.url(forResource: "HTDemucs", withExtension: "mlmodelc") {
-            let config = MLModelConfiguration()
-            config.computeUnits = .all
-            self.model = try MLModel(contentsOf: bundleCompiledURL, configuration: config)
-            return
-        }
-        
         let fileManager = FileManager.default
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Isolate")
         try fileManager.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        let appSupportCompiledURL = appSupport.appendingPathComponent("HTDemucs.mlmodelc")
         
-        let compiledURL = appSupport.appendingPathComponent("HTDemucs.mlmodelc")
-        
-        if fileManager.fileExists(atPath: compiledURL.path) {
-            let config = MLModelConfiguration()
-            config.computeUnits = .all
-            self.model = try MLModel(contentsOf: compiledURL, configuration: config)
-            return
+        // 1. Check in Bundle.main (Resources)
+        var candidateModelURLs: [URL] = []
+        if let bundleCompiledURL = Bundle.main.url(forResource: "HTDemucs", withExtension: "mlmodelc") {
+            candidateModelURLs.append(bundleCompiledURL)
+        }
+        if let resURL = Bundle.main.resourceURL?.appendingPathComponent("HTDemucs.mlmodelc"),
+           fileManager.fileExists(atPath: resURL.path) {
+            candidateModelURLs.append(resURL)
         }
         
-        // Check for .mlpackage in AppSupport or Bundle
-        var packageURL = appSupport.appendingPathComponent("HTDemucs_CoreML_FP16.mlpackage")
-        if !fileManager.fileExists(atPath: packageURL.path) {
-            if let bundlePkg = Bundle.main.url(forResource: "HTDemucs_CoreML_FP16", withExtension: "mlpackage") {
-                packageURL = bundlePkg
-            } else {
-                throw DemucsError.modelNotFound("HTDemucs.mlmodelc or HTDemucs_CoreML_FP16.mlpackage not found.")
+        // 2. Check in Application Support
+        if fileManager.fileExists(atPath: appSupportCompiledURL.path) {
+            candidateModelURLs.append(appSupportCompiledURL)
+        }
+        
+        // Try loading candidate pre-compiled models
+        for url in candidateModelURLs {
+            do {
+                let config = MLModelConfiguration()
+                config.computeUnits = .all
+                self.model = try MLModel(contentsOf: url, configuration: config)
+                
+                // If loaded from bundle, copy to Application Support for fast future access
+                if url != appSupportCompiledURL && !fileManager.fileExists(atPath: appSupportCompiledURL.path) {
+                    try? fileManager.copyItem(at: url, to: appSupportCompiledURL)
+                }
+                return
+            } catch {
+                print("Failed to load CoreML model from \(url.path): \(error)")
             }
         }
         
-        // Compile the model asynchronously
-        let tempCompiledURL = try await Task.detached {
-            try MLModel.compileModel(at: packageURL)
-        }.value
-        
-        if fileManager.fileExists(atPath: compiledURL.path) {
-            try? fileManager.removeItem(at: compiledURL)
+        // 3. Check for .mlpackage in AppSupport or Bundle to compile on-the-fly
+        var candidatePackages: [URL] = []
+        if let bundlePkg = Bundle.main.url(forResource: "HTDemucs_CoreML_FP16", withExtension: "mlpackage") {
+            candidatePackages.append(bundlePkg)
         }
-        try fileManager.moveItem(at: tempCompiledURL, to: compiledURL)
+        if let resPkg = Bundle.main.resourceURL?.appendingPathComponent("HTDemucs_CoreML_FP16.mlpackage"),
+           fileManager.fileExists(atPath: resPkg.path) {
+            candidatePackages.append(resPkg)
+        }
+        let appSupportPkg = appSupport.appendingPathComponent("HTDemucs_CoreML_FP16.mlpackage")
+        if fileManager.fileExists(atPath: appSupportPkg.path) {
+            candidatePackages.append(appSupportPkg)
+        }
         
-        let config = MLModelConfiguration()
-        config.computeUnits = .all
-        self.model = try MLModel(contentsOf: compiledURL, configuration: config)
+        for pkgURL in candidatePackages {
+            do {
+                let tempCompiledURL = try await Task.detached {
+                    try MLModel.compileModel(at: pkgURL)
+                }.value
+                
+                if fileManager.fileExists(atPath: appSupportCompiledURL.path) {
+                    try? fileManager.removeItem(at: appSupportCompiledURL)
+                }
+                try fileManager.moveItem(at: tempCompiledURL, to: appSupportCompiledURL)
+                
+                let config = MLModelConfiguration()
+                config.computeUnits = .all
+                self.model = try MLModel(contentsOf: appSupportCompiledURL, configuration: config)
+                return
+            } catch {
+                print("Failed to compile mlpackage from \(pkgURL.path): \(error)")
+            }
+        }
+        
+        throw DemucsError.modelNotFound("HTDemucs CoreML Neural Engine model could not be found in Bundle resources or Application Support.")
     }
     
     // MARK: - Audio Splitting
@@ -442,17 +471,139 @@ public actor DemucsEngine {
     // MARK: - Internal Signal Processing Helpers
     
     private func decodeAudioToStandardFormat(url: URL) async throws -> (AVAudioPCMBuffer, Int) {
-        // Attempt Method 1: AVAssetReader (Handles all MP3 VBR/CBR, ID3v2 tags with artwork, AAC, M4A, FLAC, WAV, AIFF)
+        let isSecScoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if isSecScoped {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        // Tier 1: CoreAudio ExtAudioFile (Ultra-fast, 100% reliable macOS native C API for MP3, M4A, AAC, FLAC, WAV, ALAC, AIFF)
+        if let result = try? decodeWithExtAudioFile(url: url) {
+            return result
+        }
+        
+        // Tier 2: AVAssetReader (Handles 16-bit signed integer linear PCM decoding across all AVFoundation formats)
         if let result = try? await decodeWithAssetReader(url: url) {
             return result
         }
         
-        // Attempt Method 2: Chunked AVAudioFile + AVAudioConverter fallback
+        // Tier 3: Chunked AVAudioFile + AVAudioConverter fallback
         if let result = try? decodeWithAudioFile(url: url) {
             return result
         }
         
         throw DemucsError.conversionFailed("Unable to decode audio file '\(url.lastPathComponent)'. Corrupt or unsupported format.")
+    }
+    
+    private func decodeWithExtAudioFile(url: URL) throws -> (AVAudioPCMBuffer, Int) {
+        var extAudioFile: ExtAudioFileRef? = nil
+        let openStatus = ExtAudioFileOpenURL(url as CFURL, &extAudioFile)
+        guard openStatus == noErr, let audioFile = extAudioFile else {
+            throw DemucsError.conversionFailed("ExtAudioFileOpenURL failed with OSStatus \(openStatus)")
+        }
+        defer { ExtAudioFileDispose(audioFile) }
+        
+        var clientFormat = AudioStreamBasicDescription(
+            mSampleRate: Double(Self.sampleRate),
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        
+        let setFormatStatus = ExtAudioFileSetProperty(
+            audioFile,
+            kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
+            &clientFormat
+        )
+        guard setFormatStatus == noErr else {
+            throw DemucsError.conversionFailed("ExtAudioFileSetProperty ClientDataFormat failed with OSStatus \(setFormatStatus)")
+        }
+        
+        var totalFrames: Int64 = 0
+        var propSize = UInt32(MemoryLayout<Int64>.size)
+        _ = ExtAudioFileGetProperty(audioFile, kExtAudioFileProperty_FileLengthFrames, &propSize, &totalFrames)
+        
+        let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Self.sampleRate,
+            channels: 2,
+            interleaved: false
+        )!
+        
+        let readChunkSize: UInt32 = 16384
+        var tempLeft = [Float](repeating: 0, count: Int(readChunkSize))
+        var tempRight = [Float](repeating: 0, count: Int(readChunkSize))
+        
+        var allSamplesL: [Float] = []
+        var allSamplesR: [Float] = []
+        if totalFrames > 0 {
+            allSamplesL.reserveCapacity(Int(totalFrames) + 44100)
+            allSamplesR.reserveCapacity(Int(totalFrames) + 44100)
+        }
+        
+        let bufferListSize = MemoryLayout<AudioBufferList>.size + MemoryLayout<AudioBuffer>.size
+        let bufferListRaw = UnsafeMutableRawPointer.allocate(byteCount: bufferListSize, alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { bufferListRaw.deallocate() }
+        
+        let bufferListPtr = bufferListRaw.bindMemory(to: AudioBufferList.self, capacity: 1)
+        bufferListPtr.pointee.mNumberBuffers = 2
+        
+        let buffersPtr = UnsafeMutableAudioBufferListPointer(bufferListPtr)
+        
+        while true {
+            var numFramesToRead = readChunkSize
+            
+            tempLeft.withUnsafeMutableBufferPointer { leftBuf in
+                tempRight.withUnsafeMutableBufferPointer { rightBuf in
+                    buffersPtr[0].mNumberChannels = 1
+                    buffersPtr[0].mDataByteSize = readChunkSize * 4
+                    buffersPtr[0].mData = UnsafeMutableRawPointer(leftBuf.baseAddress)
+                    
+                    buffersPtr[1].mNumberChannels = 1
+                    buffersPtr[1].mDataByteSize = readChunkSize * 4
+                    buffersPtr[1].mData = UnsafeMutableRawPointer(rightBuf.baseAddress)
+                    
+                    let readStatus = ExtAudioFileRead(audioFile, &numFramesToRead, bufferListPtr)
+                    if readStatus != noErr || numFramesToRead == 0 {
+                        numFramesToRead = 0
+                    }
+                }
+            }
+            
+            if numFramesToRead == 0 { break }
+            
+            allSamplesL.append(contentsOf: tempLeft[0..<Int(numFramesToRead)])
+            allSamplesR.append(contentsOf: tempRight[0..<Int(numFramesToRead)])
+        }
+        
+        let frameCount = allSamplesL.count
+        guard frameCount > 0 else {
+            throw DemucsError.invalidAudioFormat
+        }
+        
+        guard let finalBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            throw DemucsError.conversionFailed("Failed to allocate destination PCM buffer")
+        }
+        finalBuffer.frameLength = AVAudioFrameCount(frameCount)
+        
+        let destL = finalBuffer.floatChannelData![0]
+        let destR = finalBuffer.floatChannelData![1]
+        
+        allSamplesL.withUnsafeBufferPointer { pL in
+            _ = memcpy(destL, pL.baseAddress!, frameCount * MemoryLayout<Float>.size)
+        }
+        allSamplesR.withUnsafeBufferPointer { pR in
+            _ = memcpy(destR, pR.baseAddress!, frameCount * MemoryLayout<Float>.size)
+        }
+        
+        return (finalBuffer, frameCount)
     }
     
     private func decodeWithAssetReader(url: URL) async throws -> (AVAudioPCMBuffer, Int) {
@@ -464,13 +615,13 @@ public actor DemucsEngine {
         
         let reader = try AVAssetReader(asset: asset)
         
-        // Output settings for 44.1kHz Stereo Linear PCM Float32 Non-Interleaved
+        // Output settings for standard 16-bit Linear PCM (Universal compatibility across all macOS decoders)
         let outputSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: Self.sampleRate,
             AVNumberOfChannelsKey: 2,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
             AVLinearPCMIsBigEndianKey: false,
             AVLinearPCMIsNonInterleaved: false
         ]
@@ -495,6 +646,8 @@ public actor DemucsEngine {
         audioSamplesL.reserveCapacity(estimatedCapacity)
         audioSamplesR.reserveCapacity(estimatedCapacity)
         
+        let scale: Float = 1.0 / 32768.0
+        
         while reader.status == .reading {
             guard let sampleBuffer = output.copyNextSampleBuffer() else { break }
             guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
@@ -516,11 +669,10 @@ public actor DemucsEngine {
             
             guard status == noErr, let rawPtr = dataPointer else { continue }
             
-            // Output is interleaved 2-channel Float32 (L, R, L, R, ...)
-            let floatPtr = UnsafeRawPointer(rawPtr).assumingMemoryBound(to: Float.self)
+            let int16Ptr = UnsafeRawPointer(rawPtr).assumingMemoryBound(to: Int16.self)
             for i in 0..<numSamples {
-                audioSamplesL.append(floatPtr[i * 2])
-                audioSamplesR.append(floatPtr[i * 2 + 1])
+                audioSamplesL.append(Float(int16Ptr[i * 2]) * scale)
+                audioSamplesR.append(Float(int16Ptr[i * 2 + 1]) * scale)
             }
         }
         

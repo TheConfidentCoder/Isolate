@@ -456,6 +456,13 @@ struct LibraryView: View {
             
             Task {
                 for url in selectedURLs {
+                    let isSecScoped = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if isSecScoped {
+                            url.stopAccessingSecurityScopedResource()
+                        }
+                    }
+                    
                     let path = url.path
                     let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
                     if let existing = try? modelContext.fetch(descriptor).first {

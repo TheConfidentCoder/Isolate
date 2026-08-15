@@ -1,8 +1,8 @@
 cask "isolate" do
-  version "1.0.0"
-  sha256 "b059edbff1b8e67b7db6062ebc2cfd1117c6fa8066ac7330c48ab879dc434550"
+  version "1.2.5"
+  sha256 "e6a68d336be4acedd6f9c72237e7d102265fef30cc07459c1c4834258ab6c48c"
 
-  url "https://github.com/TheConfidentCoder/Isolate/releases/download/v#{version}/Isolate-v#{version}.dmg"
+  url "https://github.com/TheConfidentCoder/Isolate/releases/download/v#{version}/Isolate.dmg"
   name "Isolate"
   desc "Raw 4-stem audio isolation powered by Demucs v4 Neural Engine CoreML"
   homepage "https://github.com/TheConfidentCoder/Isolate"

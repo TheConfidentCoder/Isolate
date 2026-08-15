@@ -35,7 +35,7 @@ brew install --cask isolate
 ## 💿 Method 3: DMG Installer (Drag & Drop)
 
 1. Download **`Isolate.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
-2. Double-click the DMG to open the installer window.
+2. Double-click the DMG to open the Nothing OS-styled installer window.
 3. Drag **`Isolate.app`** into your **`Applications`** folder.
 4. Launch `Isolate.app` from `/Applications`.
 
@@ -66,6 +66,6 @@ cd Isolate
 xcodegen generate
 
 # Build Release binary
-xcodebuild -scheme Isolate -destination 'platform=macOS' build
+xcodebuild -scheme Isolate -configuration Release -destination 'platform=macOS' build
 open build/Release/Isolate.app
 ```

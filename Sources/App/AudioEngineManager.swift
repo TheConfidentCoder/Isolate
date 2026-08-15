@@ -828,6 +828,13 @@ public final class AudioEngineManager: @unchecked Sendable {
         
         let task = Task<TrackData?, Error> { [weak self] in
             guard let self = self else { return nil }
+            let isSecScoped = url.startAccessingSecurityScopedResource()
+            defer {
+                if isSecScoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
             let asset = AVURLAsset(url: url)
             let durationSecs = (try? await asset.load(.duration).seconds) ?? 180.0
             let estimatedChunks = max(1, Int(ceil((durationSecs * 44100.0) / 220500.0)))
@@ -948,7 +955,7 @@ public final class AudioEngineManager: @unchecked Sendable {
                 self.currentTrackName = previousTrackName
                 self.albumArt = previousAlbumArt
                 
-                self.showError("IMPORT FAILED: \(url.lastPathComponent.uppercased()) • UNABLE TO DECODE AUDIO")
+                self.showError("IMPORT FAILED: \(url.lastPathComponent.uppercased()) • \(error.localizedDescription.uppercased())")
                 Haptics.playClick()
             }
             return nil
