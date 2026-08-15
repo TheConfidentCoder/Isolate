@@ -100,6 +100,29 @@ Isolate/
 └── .github/workflows/              # Automated CI/CD release workflow
 ```
 
+### [ Audio DSP & Neural Pipeline ]
+
+```mermaid
+flowchart TD
+    A["Audio File (MP3 / WAV / FLAC / M4A)"] --> B["Demucs Neural Engine (ANE / Metal CoreML)"]
+    B --> C["Vocals Stem (AVAudioPlayerNode)"]
+    B --> D["Drums Stem (AVAudioPlayerNode)"]
+    B --> E["Bass Stem (AVAudioPlayerNode)"]
+    B --> F["Other Stem (AVAudioPlayerNode)"]
+    
+    C --> G["4-Channel Mixer & Rotary Pan Stage"]
+    D --> G
+    E --> G
+    F --> G
+    
+    G --> H["Master Summing Bus & Limiter (-0.3 dBFS)"]
+    H --> I["Real-Time 32-Band FFT Analyzer (vDSP)"]
+    I --> J["Dynamic Island Visualizer (60 FPS Metal)"]
+    H --> K["AVAudioEngine Output (Speaker / Headphones)"]
+    
+    G --> L["Multi-Format Exporter (WAV / MP3 / FLAC ZIP)"]
+```
+
 ---
 
 ## [ 05. CREDITS & LICENSE ]

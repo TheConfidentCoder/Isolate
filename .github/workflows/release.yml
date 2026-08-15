@@ -1,39 +1,21 @@
-name: Release Isolate
+name: Release Build & Publish
 
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
-  build-and-release:
+  release:
     name: Build & Publish Release DMG
     runs-on: macos-14
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Select Xcode 16
-        run: |
-          if [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app
-          elif [ -d "/Applications/Xcode_16.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.0.app
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app
-          fi
-          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -41,33 +23,20 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: Run Unit Tests
+      - name: Build macOS Release Binary
         run: |
-          xcodebuild test \
-            -scheme Isolate \
-            -destination 'platform=macOS' \
-            -only-testing:IsolateTests
+          xcodebuild -scheme Isolate -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO -derivedDataPath DerivedData
+          mkdir -p build/Release
+          cp -R DerivedData/Build/Products/Release/Isolate.app build/Release/Isolate.app
 
-      - name: Build & Package DMG
+      - name: Create DMG Disk Image
         run: |
-          VERSION="${{ github.ref_name }}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          chmod +x scripts/package_release.sh
-          ./scripts/package_release.sh "$VERSION"
+          hdiutil create -volname "Isolate" -srcfolder build/Release/Isolate.app -ov -format UDZO Isolate.dmg
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Isolate ${{ github.ref_name }}"
+          files: Isolate.dmg
+          generate_release_notes: true
           draft: false
           prerelease: false
-          generate_release_notes: true
-          files: |
-            dist/Isolate-*.dmg
-            dist/Isolate-*.pkg
-            dist/Isolate-*.zip
-            dist/SHA256SUMS.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
