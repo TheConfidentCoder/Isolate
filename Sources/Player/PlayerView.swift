@@ -1717,27 +1717,39 @@ struct StudioTelemetryHUDView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     
     var body: some View {
-        HStack(spacing: 8) {
-            telemetryBox(label: "TEMPO / KEY", value: "\(engineManager.effectiveBPM) • \(engineManager.effectiveMusicalKey)")
-            telemetryBox(label: "AUDIO FORMAT", value: "\(engineManager.trackBitDepth) • \(engineManager.trackSampleRate)")
-            telemetryBox(label: "TIMECODE", value: engineManager.detailedTimecode)
-            telemetryBox(label: "NEURAL ENGINE", value: "DEMUCS v4 • ANE ACTIVE")
+        VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                telemetryBox(label: "TEMPO / KEY", value: "\(engineManager.effectiveBPM) • \(engineManager.effectiveMusicalKey)")
+                telemetryBox(label: "AUDIO FORMAT", value: "\(engineManager.trackBitDepth) • \(engineManager.trackSampleRate)")
+            }
+            HStack(spacing: 6) {
+                telemetryBox(label: "TIMECODE", value: engineManager.detailedTimecode)
+                telemetryBox(label: "NEURAL ENGINE", value: "\(AudioEngineManager.systemChipName) ANE • REALTIME")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
     
     private func telemetryBox(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.custom("DotGothic16-Regular", size: 8.5))
-                .foregroundColor(.red.opacity(0.85))
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.red.opacity(0.85))
+                    .frame(width: 3.5, height: 3.5)
+                Text(label)
+                    .font(.custom("DotGothic16-Regular", size: 8.0))
+                    .foregroundColor(.red.opacity(0.85))
+                Spacer()
+            }
             Text(value)
-                .font(.custom("DotGothic16-Regular", size: 10))
+                .font(.custom("DotGothic16-Regular", size: 9.5))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(5)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
         .background(Color.white.opacity(0.03))
         .overlay(
             Rectangle()
