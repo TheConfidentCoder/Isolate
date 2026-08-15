@@ -303,17 +303,21 @@ public final class AudioEngineManager: @unchecked Sendable {
             
             let avgMag = count > 0 ? sumMag / Float(count) : 0.0
             let combined = (maxMag * 0.75 + avgMag * 0.25)
+            
+            // Noise floor cutoff and dynamic expansion for ultra-punchy Nothing meter response
+            let noiseFloor: Float = 0.0015
+            let cleanMag = max(0.0, combined - noiseFloor)
             // Equal-loudness curve boost for mid/high frequencies
-            let eqCurve = 1.0 + Float(i) * 0.05
-            let scaled = combined * eqCurve * 32.0
-            let targetMag = min(1.0, max(0.0, pow(scaled, 0.7)))
+            let eqCurve = 1.0 + Float(i) * 0.04
+            let scaled = cleanMag * eqCurve * 18.0
+            let targetMag = min(1.0, max(0.0, pow(scaled, 1.15)))
             
             // Apple-grade fluid transient attack & natural ballistic gravity release
             let current = self.smoothedMasterEQ[i]
             if targetMag > current {
-                self.smoothedMasterEQ[i] = current * 0.15 + targetMag * 0.85
+                self.smoothedMasterEQ[i] = current * 0.12 + targetMag * 0.88
             } else {
-                self.smoothedMasterEQ[i] = current * 0.78 + targetMag * 0.22
+                self.smoothedMasterEQ[i] = current * 0.72 + targetMag * 0.28
             }
             bands[i] = self.smoothedMasterEQ[i]
         }

@@ -570,20 +570,25 @@ struct StemDynamicWaveformView: View {
         HStack(spacing: 5.0) {
             ForEach(0..<7, id: \.self) { barIndex in
                 let amp = bars[barIndex]
-                let spread = isActive ? (amp > 0.015 ? min(3, Int(ceil(amp * 3.0))) : 0) : 0
-                let hasSignal = isActive && amp > 0.015
+                let hasSignal = isActive && amp > 0.012
+                let spread = hasSignal ? min(3, Int(ceil(amp * 3.0))) : 0
                 
                 VStack(spacing: 1.8) {
                     ForEach(0..<blockCount, id: \.self) { blockIndex in
                         let distance = abs(centerIndex - blockIndex)
                         let isLit = hasSignal && (distance <= spread)
+                        let isRestingCenter = !hasSignal && (blockIndex == centerIndex)
                         
                         RoundedRectangle(cornerRadius: 0.6)
-                            .fill(isLit ? Color.red : Color.white.opacity(0.04))
+                            .fill(
+                                isLit
+                                    ? Color.red
+                                    : (isRestingCenter ? (effectiveVolume <= 0.001 ? Color.white.opacity(0.08) : Color.red.opacity(0.20)) : Color.clear)
+                            )
                             .frame(width: 4.8, height: 2.3)
                     }
                 }
-                .animation(.spring(response: 0.08, dampingFraction: 0.68, blendDuration: 0.01), value: amp)
+                .animation(.spring(response: 0.08, dampingFraction: 0.7, blendDuration: 0.01), value: amp)
             }
         }
         .frame(height: 26)
