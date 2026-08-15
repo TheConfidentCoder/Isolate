@@ -46,17 +46,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo -e "${WHITE}⚡ [1/4] Fetching latest release from GitHub...${NC}"
-RELEASE_URL="https://github.com/TheConfidentCoder/Isolate/releases/latest/download/Isolate-v1.0.0-macOS.zip"
-ZIP_FILE="$TEMP_DIR/Isolate.zip"
+echo -e "${WHITE}⚡ [1/4] Fetching latest release DMG from GitHub...${NC}"
+RELEASE_URL="https://github.com/TheConfidentCoder/Isolate/releases/latest/download/Isolate.dmg"
+DMG_FILE="$TEMP_DIR/Isolate.dmg"
+MOUNT_POINT="$TEMP_DIR/mnt"
+mkdir -p "$MOUNT_POINT"
 
-curl -fL "$RELEASE_URL" -o "$ZIP_FILE" --progress-bar
+curl -fL "$RELEASE_URL" -o "$DMG_FILE" --progress-bar
 
-echo -e "${WHITE}📦 [2/4] Extracting Isolate.app...${NC}"
-unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+echo -e "${WHITE}📦 [2/4] Mounting Isolate disk image...${NC}"
+hdiutil attach "$DMG_FILE" -nobrowse -readonly -mountpoint "$MOUNT_POINT" -quiet
 
-if [ ! -d "$TEMP_DIR/Isolate.app" ]; then
-    echo -e "${RED}❌ Error: Could not extract Isolate.app bundle.${NC}"
+if [ ! -d "$MOUNT_POINT/Isolate.app" ]; then
+    echo -e "${RED}❌ Error: Could not locate Isolate.app bundle in disk image.${NC}"
+    hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
     exit 1
 fi
 
@@ -66,7 +69,8 @@ if [ -d "$APP_TARGET" ]; then
     rm -rf "$APP_TARGET"
 fi
 
-cp -R "$TEMP_DIR/Isolate.app" "$INSTALL_DIR/"
+cp -R "$MOUNT_POINT/Isolate.app" "$INSTALL_DIR/"
+hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
 
 echo -e "${WHITE}🔓 [4/4] Removing Gatekeeper quarantine attribute...${NC}"
 xattr -cr "$APP_TARGET" 2>/dev/null || true

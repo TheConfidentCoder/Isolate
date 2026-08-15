@@ -34,7 +34,7 @@ brew install --cask isolate
 
 ## 💿 Method 3: DMG Installer (Drag & Drop)
 
-1. Download **`Isolate-v1.0.0.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
+1. Download **`Isolate.dmg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
 2. Double-click the DMG to open the installer window.
 3. Drag **`Isolate.app`** into your **`Applications`** folder.
 4. Launch `Isolate.app` from `/Applications`.
