@@ -55,15 +55,7 @@ brew install --cask isolate
 
 ---
 
-## 📦 Method 4: macOS Installer Package (.pkg)
-
-1. Download **`Isolate-v1.0.0.pkg`** from [GitHub Releases](https://github.com/TheConfidentCoder/Isolate/releases/latest).
-2. Double-click to run the macOS standard installer wizard.
-3. The package automatically installs to `/Applications` and executes the postinstall quarantine remover.
-
----
-
-## 🛠 Method 5: Build from Source
+## 🛠 Method 4: Build from Source
 
 ```bash
 # Clone

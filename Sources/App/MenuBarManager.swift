@@ -120,17 +120,22 @@ public final class MenuBarManager: NSObject, NSMenuDelegate {
     }
     
     public func sendBatchCompletionNotification(count: Int, lastTitle: String) {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = "Stems Ready (\(count) Tracks)"
-            content.subtitle = lastTitle
-            content.body = "Neural Engine 4-stem separation complete. Ready to play & mix."
-            content.sound = .default
-            
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            center.add(request)
+        Task {
+            let center = UNUserNotificationCenter.current()
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                guard granted else { return }
+                let content = UNMutableNotificationContent()
+                content.title = "Stems Ready (\(count) Tracks)"
+                content.subtitle = lastTitle
+                content.body = "Neural Engine 4-stem separation complete. Ready to play & mix."
+                content.sound = .default
+                
+                let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                try await center.add(request)
+            } catch {
+                // Notification permission denied or ignored
+            }
         }
     }
     

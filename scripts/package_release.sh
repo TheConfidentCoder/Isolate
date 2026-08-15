@@ -156,34 +156,14 @@ cd "$BUILD_DIR"
 zip -r -y -q "$FINAL_ZIP" "Isolate.app"
 cd "$PROJECT_DIR"
 
-# 9. Create macOS Installer Package (.pkg) with Postinstall Quarantine Stripper
-echo "📦 Creating macOS Installer Package (.pkg)..."
-FINAL_PKG="$DIST_DIR/Isolate-${VERSION}.pkg"
-PKG_SCRIPTS="$DIST_DIR/pkg_scripts"
-mkdir -p "$PKG_SCRIPTS"
-cat <<'EOF' > "$PKG_SCRIPTS/postinstall"
-#!/bin/bash
-/usr/bin/xattr -dr com.apple.quarantine /Applications/Isolate.app 2>/dev/null || true
-exit 0
-EOF
-chmod +x "$PKG_SCRIPTS/postinstall"
-
-pkgbuild --component "$APP_BUNDLE" \
-         --install-location /Applications \
-         --scripts "$PKG_SCRIPTS" \
-         --identifier com.isolate.Isolate \
-         --version "$VERSION" \
-         "$FINAL_PKG" --quiet
-rm -rf "$PKG_SCRIPTS"
-
-# 10. Compute Checksums
+# 9. Compute Checksums
 echo "🔒 Computing SHA256 checksums..."
 cd "$DIST_DIR"
-shasum -a 256 "Isolate-${VERSION}.dmg" "Isolate-${VERSION}.pkg" "Isolate-${VERSION}-macOS.zip" > "$CHECKSUMS"
+shasum -a 256 "Isolate-${VERSION}.dmg" "Isolate-${VERSION}-macOS.zip" > "$CHECKSUMS"
 cd "$PROJECT_DIR"
 
 echo "=========================================================="
-echo "✅ RELEASE PACKAGES BUILT SUCCESSFULLY!"
+echo "✅ RELEASE PACKAGES BUILT SUCCESSFULLY (DMG ONLY)!"
 echo "=========================================================="
 ls -lh "$DIST_DIR"
 cat "$CHECKSUMS"
