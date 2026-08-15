@@ -97,10 +97,42 @@ struct LibraryView: View {
         }
     }
     
+    @State private var searchText = ""
+    
+    private var filteredTracks: [TrackModel] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return tracks }
+        
+        let queryTokens = trimmed
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        
+        guard !queryTokens.isEmpty else { return tracks }
+        
+        return tracks.filter { track in
+            let titleLower = track.title.lowercased()
+            let filenameLower = track.originalURL.lastPathComponent.lowercased()
+            let pathLower = track.originalURL.path.lowercased()
+            let combined = "\(titleLower) \(filenameLower) \(pathLower)"
+            
+            // Direct substring match
+            if combined.contains(trimmed) { return true }
+            
+            // Multi-token match across words/delimiters
+            return queryTokens.allSatisfy { token in
+                combined.contains(token)
+            }
+        }
+    }
+    
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
                 headerView
+                
+                if !tracks.isEmpty {
+                    searchBar
+                }
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
@@ -108,7 +140,7 @@ struct LibraryView: View {
                 trackListView
                 
                 Divider()
-                    .background(Color.white.opacity(0.12))
+                    .background(Color.white.opacity(0.1))
                 
                 footerView
             }
@@ -147,14 +179,56 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.top, 36)
+        .padding(.bottom, 8)
+    }
+    
+    private var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundColor(.gray)
+            
+            TextField("SEARCH STEMS...", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.custom("DotGothic16-Regular", size: 11.5))
+                .foregroundColor(.white)
+            
+            if !searchText.isEmpty {
+                Button(action: {
+                    searchText = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.04))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
     
     @ViewBuilder
     private var trackListView: some View {
         if tracks.isEmpty {
             emptyStateView
+        } else if filteredTracks.isEmpty {
+            VStack(spacing: 8) {
+                Spacer()
+                Text("NO MATCHING TRACKS")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(.gray)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         } else {
             tracksScrollView
         }
@@ -180,9 +254,9 @@ struct LibraryView: View {
     private var tracksScrollView: some View {
         ScrollView {
             VStack(spacing: 6) {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, track in
                     let isCurrentMenuOpen = activeMenuTrackID == track.id
-                    let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(tracks.count - index)
+                    let zIndexValue: Double = isCurrentMenuOpen ? 1000.0 : Double(filteredTracks.count - index)
                     TrackRowView(
                         track: track,
                         isActive: engineManager.currentTrackID == track.id || engineManager.currentTrackName == track.title.uppercased(),
@@ -315,29 +389,34 @@ struct LibraryView: View {
             UTType(filenameExtension: "aac") ?? .audio,
             UTType(filenameExtension: "caf") ?? .audio
         ]
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         
-        if panel.runModal() == .OK, let url = panel.url {
+        if panel.runModal() == .OK {
+            let selectedURLs = panel.urls
+            guard !selectedURLs.isEmpty else { return }
+            
             Task {
-                let path = url.path
-                let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
-                if let existing = try? modelContext.fetch(descriptor).first {
-                    await engineManager.loadTrack(existing)
-                } else {
-                    if let data = await engineManager.loadAndSplitAudio(url: url) {
-                        await MainActor.run {
-                            let newTrack = TrackModel(
-                                id: data.id,
-                                title: data.title,
-                                originalURL: data.originalURL,
-                                vocalStemURL: data.vocalStemURL,
-                                bassStemURL: data.bassStemURL,
-                                drumStemURL: data.drumStemURL,
-                                otherStemURL: data.otherStemURL
-                            )
-                            modelContext.insert(newTrack)
-                            try? modelContext.save()
+                for url in selectedURLs {
+                    let path = url.path
+                    let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
+                    if let existing = try? modelContext.fetch(descriptor).first {
+                        await engineManager.loadTrack(existing)
+                    } else {
+                        if let data = await engineManager.loadAndSplitAudio(url: url) {
+                            await MainActor.run {
+                                let newTrack = TrackModel(
+                                    id: data.id,
+                                    title: data.title,
+                                    originalURL: data.originalURL,
+                                    vocalStemURL: data.vocalStemURL,
+                                    bassStemURL: data.bassStemURL,
+                                    drumStemURL: data.drumStemURL,
+                                    otherStemURL: data.otherStemURL
+                                )
+                                modelContext.insert(newTrack)
+                                try? modelContext.save()
+                            }
                         }
                     }
                 }

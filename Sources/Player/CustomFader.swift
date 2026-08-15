@@ -11,6 +11,8 @@ struct CustomFader: View {
     @State private var isHovered = false
     @State private var isDragging = false
     @State private var lastClickTime: Date? = nil
+    @State private var isClippingHeld = false
+    @State private var clipHoldTask: Task<Void, Never>? = nil
     
     var body: some View {
         GeometryReader { geo in
@@ -35,6 +37,7 @@ struct CustomFader: View {
                                         withAnimation(.easeOut(duration: 0.12)) {
                                             value = 1.0
                                         }
+                                        triggerClipHold()
                                         lastClickTime = nil
                                         startValue = nil
                                         return
@@ -45,14 +48,13 @@ struct CustomFader: View {
                                     let clickY = drag.startLocation.y
                                     let distFromThumb = abs(clickY - thumbCenterY)
                                     if distFromThumb <= 16 {
-                                        // Grabbed thumb directly
                                         startValue = value
                                     } else {
-                                        // Clicked track rail: Jump to position
                                         let jumpedVal = min(max(Double(1.0 - (clickY / trackHeight)), 0.0), 1.0)
                                         value = jumpedVal
                                         startValue = jumpedVal
                                         Haptics.playClick()
+                                        if jumpedVal >= 0.995 { triggerClipHold() }
                                     }
                                     
                                     hitTop = (value >= 0.999)
@@ -67,6 +69,7 @@ struct CustomFader: View {
                                 if targetVal >= 0.999 && !hitTop {
                                     hitTop = true
                                     Haptics.playAlignment()
+                                    triggerClipHold()
                                 } else if targetVal < 0.999 {
                                     hitTop = false
                                 }
@@ -90,19 +93,30 @@ struct CustomFader: View {
                             }
                     )
                 
-                // 2. Vertical Track Visuals (Centered)
-                ZStack(alignment: .bottom) {
-                    // Track background slot
-                    Rectangle()
-                        .fill(Color(white: 0.12))
-                        .frame(width: 4, height: trackHeight)
+                // 2. Vertical Track Visuals (Centered) with 1.2s Peak-Hold Clip LED
+                ZStack(alignment: .top) {
+                    let isLit = isClippingHeld || value >= 0.995
+                    Circle()
+                        .fill(isLit ? Color.red : Color.red.opacity(0.18))
+                        .frame(width: 5, height: 5)
+                        .shadow(color: isLit ? Color.red : Color.clear, radius: 3)
+                        .padding(.bottom, 4)
+                        .animation(.easeOut(duration: 0.25), value: isLit)
                     
-                    // Track fill (active level)
-                    Rectangle()
-                        .fill(Color.red)
-                        .frame(width: 4, height: max(0, trackHeight * CGFloat(value)))
+                    ZStack(alignment: .bottom) {
+                        // Track background slot
+                        Rectangle()
+                            .fill(Color(white: 0.12))
+                            .frame(width: 4, height: trackHeight - 12)
+                        
+                        // Track fill (active level)
+                        Rectangle()
+                            .fill(Color.red)
+                            .frame(width: 4, height: max(0, (trackHeight - 12) * CGFloat(value)))
+                    }
+                    .padding(.top, 10)
                 }
-                .frame(width: 4, height: trackHeight)
+                .frame(width: 6, height: trackHeight)
                 .position(x: geo.size.width / 2.0, y: trackHeight / 2.0)
                 .allowsHitTesting(false)
                 
@@ -153,5 +167,19 @@ struct CustomFader: View {
             }
         }
         .frame(minHeight: 160, maxHeight: .infinity)
+    }
+    
+    private func triggerClipHold() {
+        isClippingHeld = true
+        clipHoldTask?.cancel()
+        clipHoldTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            if value < 0.995 {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    isClippingHeld = false
+                }
+            }
+        }
     }
 }

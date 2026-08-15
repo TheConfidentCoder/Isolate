@@ -26,47 +26,89 @@ public struct PlayerView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     var isSidebarVisible: Binding<Bool>?
 
+    @State private var isShowingShortcutCard = false
+    
     public init(isSidebarVisible: Binding<Bool>? = nil) {
         self.isSidebarVisible = isSidebarVisible
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                headerView
-                stemMixerView
+        ZStack {
+            VStack(spacing: 0) {
+                VStack(spacing: 16) {
+                    headerView
+                    stemMixerView
+                }
+                .background(GridBackground())
+                
+                // Fixed Bottom Transport & Mixer Controls
+                TransportBar()
             }
-            .background(GridBackground())
             
-            // Fixed Bottom Transport & Mixer Controls
-            TransportBar()
+            // HUD Shortcut Cheat Sheet Modal
+            if isShowingShortcutCard {
+                Color.black.opacity(0.75)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isShowingShortcutCard = false
+                        }
+                    }
+                
+                ShortcutsHUDModal(onClose: {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        isShowingShortcutCard = false
+                    }
+                })
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.15), value: isShowingShortcutCard)
         .background {
             shortcutsOverlay
         }
     }
     
     private var headerView: some View {
-        HStack(spacing: 18) {
-            if let isSidebarVisible = isSidebarVisible {
-                sidebarToggleButton(isSidebarVisible: isSidebarVisible)
+        GeometryReader { geo in
+            let width = geo.size.width
+            let isCompact = width < 860
+            let isMedium = width >= 860 && width < 1260
+            let isWide = width >= 1260
+            
+            HStack(spacing: 16) {
+                if let isSidebarVisible = isSidebarVisible {
+                    sidebarToggleButton(isSidebarVisible: isSidebarVisible)
+                }
+                
+                AlbumArtView(image: engineManager.albumArt)
+                
+                trackInfoView(isCompact: isCompact)
+                    .frame(minWidth: 160, maxWidth: isCompact ? .infinity : 280, alignment: .leading)
+                
+                if !isCompact {
+                    Spacer(minLength: 8)
+                    
+                    HeaderCenterTelemetryModule(
+                        isMedium: isMedium,
+                        isWide: isWide
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                
+                Spacer(minLength: 8)
+                
+                DynamicIslandDotWaveformView(
+                    magnitudes: engineManager.masterEQMagnitudes,
+                    amplitudes: engineManager.masterWaveformAmplitudes,
+                    isPlaying: engineManager.isPlaying
+                )
             }
-            
-            AlbumArtView(image: engineManager.albumArt)
-            
-            trackInfoView
-            
-            Spacer(minLength: 20)
-            
-            DynamicIslandDotWaveformView(
-                magnitudes: engineManager.masterEQMagnitudes,
-                amplitudes: engineManager.masterWaveformAmplitudes,
-                isPlaying: engineManager.isPlaying
-            )
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 8)
+        .frame(height: 124)
     }
     
     private func sidebarToggleButton(isSidebarVisible: Binding<Bool>) -> some View {
@@ -97,31 +139,37 @@ public struct PlayerView: View {
         .buttonStyle(.plain)
     }
     
-    private var trackInfoView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: 26))
+    private func trackInfoView(isCompact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            MarqueeText(text: engineManager.currentTrackName, font: .custom("DotGothic16-Regular", size: isCompact ? 22 : 24))
                 .foregroundColor(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
-            HStack(spacing: 12) {
+            if !engineManager.trackArtist.isEmpty && engineManager.trackArtist != "Isolate" {
+                Text("\(engineManager.trackArtist.uppercased()) • \(engineManager.trackAlbum.uppercased())")
+                    .font(.custom("DotGothic16-Regular", size: 10.5))
+                    .foregroundColor(.white.opacity(0.75))
+                    .lineLimit(1)
+            }
+            
+            HStack(spacing: 10) {
                 Text(engineManager.isBypassed ? "SOURCE: ORIGINAL MASTER" : "SOURCE: 4-STEM ISOLATION")
-                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .font(.custom("DotGothic16-Regular", size: 11))
                     .foregroundColor(engineManager.isBypassed ? .yellow : .gray)
                 
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(engineManager.isPlaying ? Color.red : Color.gray)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 5, height: 5)
                     
                     Text(engineManager.isPlaying ? "ACTIVE" : "STANDBY")
-                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .font(.custom("DotGothic16-Regular", size: 10.5))
                         .foregroundColor(engineManager.isPlaying ? .red : .gray)
                 }
             }
         }
     }
-    
-    private var stemMixerView: some View {
+       private var stemMixerView: some View {
         @Bindable var engine = engineManager
         let anySolo = engine.vocalSolo || engine.drumSolo || engine.bassSolo || engine.otherSolo
         
@@ -129,6 +177,7 @@ public struct PlayerView: View {
             StemChannelView(
                 title: "VOCALS",
                 volume: $engine.vocalVolume,
+                pan: $engine.vocalPan,
                 isMuted: $engine.vocalMuted,
                 isSoloed: $engine.vocalSolo,
                 eqMagnitudes: engine.vocalEQMagnitudes,
@@ -140,6 +189,7 @@ public struct PlayerView: View {
             StemChannelView(
                 title: "DRUMS",
                 volume: $engine.drumVolume,
+                pan: $engine.drumPan,
                 isMuted: $engine.drumMuted,
                 isSoloed: $engine.drumSolo,
                 eqMagnitudes: engine.drumEQMagnitudes,
@@ -151,6 +201,7 @@ public struct PlayerView: View {
             StemChannelView(
                 title: "BASS",
                 volume: $engine.bassVolume,
+                pan: $engine.bassPan,
                 isMuted: $engine.bassMuted,
                 isSoloed: $engine.bassSolo,
                 eqMagnitudes: engine.bassEQMagnitudes,
@@ -162,6 +213,7 @@ public struct PlayerView: View {
             StemChannelView(
                 title: "OTHER",
                 volume: $engine.otherVolume,
+                pan: $engine.otherPan,
                 isMuted: $engine.otherMuted,
                 isSoloed: $engine.otherSolo,
                 eqMagnitudes: engine.otherEQMagnitudes,
@@ -177,15 +229,54 @@ public struct PlayerView: View {
     
     private var shortcutsOverlay: some View {
         Group {
-            Button("") { toggleMute(0) }.keyboardShortcut("1", modifiers: []).hidden()
-            Button("") { toggleMute(1) }.keyboardShortcut("2", modifiers: []).hidden()
-            Button("") { toggleMute(2) }.keyboardShortcut("3", modifiers: []).hidden()
-            Button("") { toggleMute(3) }.keyboardShortcut("4", modifiers: []).hidden()
+            // Dedicated Numeric Solos (Keys 1 - 4)
+            Button("") { toggleSolo(0) }.keyboardShortcut("1", modifiers: []).hidden()
+            Button("") { toggleSolo(1) }.keyboardShortcut("2", modifiers: []).hidden()
+            Button("") { toggleSolo(2) }.keyboardShortcut("3", modifiers: []).hidden()
+            Button("") { toggleSolo(3) }.keyboardShortcut("4", modifiers: []).hidden()
             
-            Button("") { toggleSolo(0) }.keyboardShortcut("1", modifiers: [.shift]).hidden()
-            Button("") { toggleSolo(1) }.keyboardShortcut("2", modifiers: [.shift]).hidden()
-            Button("") { toggleSolo(2) }.keyboardShortcut("3", modifiers: [.shift]).hidden()
-            Button("") { toggleSolo(3) }.keyboardShortcut("4", modifiers: [.shift]).hidden()
+            // Letter Mute Toggles (V, D, B, O)
+            Button("") { toggleMute(0) }.keyboardShortcut("v", modifiers: []).hidden()
+            Button("") { toggleMute(1) }.keyboardShortcut("d", modifiers: []).hidden()
+            Button("") { toggleMute(2) }.keyboardShortcut("b", modifiers: []).hidden()
+            Button("") { toggleMute(3) }.keyboardShortcut("o", modifiers: []).hidden()
+            
+            // Stem Macro & Loop Shortcuts
+            Button("") { engineManager.applyResetMix() }.keyboardShortcut("r", modifiers: []).hidden()
+            Button("") { engineManager.applyAcapella() }.keyboardShortcut("a", modifiers: []).hidden()
+            Button("") { engineManager.applyInstrumental() }.keyboardShortcut("i", modifiers: []).hidden()
+            Button("") { engineManager.toggleLoop() }.keyboardShortcut("l", modifiers: []).hidden()
+            
+            // On-The-Fly Loop Setters ([ and ])
+            Button("") {
+                Haptics.playClick()
+                engineManager.loopStartProgress = engineManager.playbackProgress
+                if engineManager.loopEndProgress <= engineManager.loopStartProgress {
+                    engineManager.loopEndProgress = min(1.0, engineManager.loopStartProgress + 0.25)
+                }
+                engineManager.isLooping = true
+            }.keyboardShortcut("[", modifiers: []).hidden()
+            
+            Button("") {
+                Haptics.playClick()
+                engineManager.loopEndProgress = max(engineManager.loopStartProgress + 0.05, engineManager.playbackProgress)
+                engineManager.isLooping = true
+            }.keyboardShortcut("]", modifiers: []).hidden()
+            
+            // HUD Cheat Sheet Toggle (? / /)
+            Button("") {
+                Haptics.playClick()
+                withAnimation(.easeOut(duration: 0.15)) {
+                    isShowingShortcutCard.toggle()
+                }
+            }.keyboardShortcut("/", modifiers: []).hidden()
+            
+            Button("") {
+                Haptics.playClick()
+                withAnimation(.easeOut(duration: 0.15)) {
+                    isShowingShortcutCard.toggle()
+                }
+            }.keyboardShortcut("?", modifiers: []).hidden()
         }
     }
     
@@ -203,6 +294,7 @@ public struct PlayerView: View {
 struct StemChannelView: View {
     let title: String
     @Binding var volume: Double
+    @Binding var pan: Float
     @Binding var isMuted: Bool
     @Binding var isSoloed: Bool
     let eqMagnitudes: [Float]
@@ -222,8 +314,16 @@ struct StemChannelView: View {
         }
     }
     
+    private var dbString: String {
+        if volume <= 0.001 { return "-∞ dB" }
+        let db = 20.0 * log10(volume)
+        if abs(db) < 0.2 { return "0.0 dB" }
+        return String(format: "%.1f dB", db)
+    }
+    
     var body: some View {
-        VStack(spacing: 12) {
+        let isDimmed = isAnySoloed && !isSoloed
+        VStack(spacing: 8) {
             Text(title)
                 .font(.custom("DotGothic16-Regular", size: 16))
                 .foregroundColor(.white)
@@ -237,81 +337,179 @@ struct StemChannelView: View {
             )
             .frame(height: 26)
             
-            Text("\(Int(volume * 100))")
-                .font(.custom("DotGothic16-Regular", size: 14))
-                .foregroundColor(.gray)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    Haptics.playClick()
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        volume = 1.0
-                    }
+            // Rotary Stereo Panning Dial
+            PanKnobView(pan: $pan)
+            
+            VStack(spacing: 1) {
+                Text("\(Int(volume * 100))%")
+                    .font(.custom("DotGothic16-Regular", size: 13.5))
+                    .foregroundColor(.white)
+                
+                Text(dbString)
+                    .font(.custom("DotGothic16-Regular", size: 9.5))
+                    .foregroundColor(abs(volume - 1.0) < 0.01 ? .red : .gray)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                Haptics.playClick()
+                withAnimation(.easeOut(duration: 0.12)) {
+                    volume = 1.0
                 }
+            }
             
             CustomFader(value: $volume, label: title)
                 .frame(maxHeight: .infinity)
             
             HStack(spacing: 8) {
-                // MUTE BUTTON
-                Button(action: {
-                    if let onToggleMute = onToggleMute {
-                        onToggleMute()
-                    } else {
-                        Haptics.playClick()
-                        isMuted.toggle()
-                        if isMuted { isSoloed = false }
-                    }
-                }) {
-                    Text("M")
-                        .font(.custom("DotGothic16-Regular", size: 13))
-                        .fontWeight(.bold)
-                        .frame(width: 34, height: 30)
-                        .background(isMuted ? Color.red : (isMutedHovered ? Color.white.opacity(0.08) : Color.clear))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(isMuted ? Color.red : (isMutedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5)), lineWidth: 1)
-                        )
-                        .foregroundColor(isMuted ? .black : .white)
-                        .contentShape(Rectangle()) // Entire 34x30 area clickable!
-                }
-                .buttonStyle(.plain)
-                .onHover { hovering in
-                    isMutedHovered = hovering
-                }
-                
-                // SOLO BUTTON (Radio-Style Exclusive Solo)
-                Button(action: {
-                    if let onToggleSolo = onToggleSolo {
-                        onToggleSolo()
-                    } else {
-                        Haptics.playClick()
-                        isSoloed.toggle()
-                        if isSoloed { isMuted = false }
-                    }
-                }) {
-                    Text("S")
-                        .font(.custom("DotGothic16-Regular", size: 13))
-                        .fontWeight(.bold)
-                        .frame(width: 34, height: 30)
-                        .background(isSoloed ? Color.red : (isSoloedHovered ? Color.white.opacity(0.08) : Color.clear))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(isSoloed ? Color.red : (isSoloedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5)), lineWidth: 1)
-                        )
-                        .foregroundColor(isSoloed ? .black : .white)
-                        .contentShape(Rectangle()) // Entire 34x30 area clickable!
-                }
-                .buttonStyle(.plain)
-                .onHover { hovering in
-                    isSoloedHovered = hovering
-                }
+                muteButton
+                soloButton
             }
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.5))
-        .border(Color.white.opacity(0.1), width: 1)
+        .opacity(isDimmed ? 0.35 : 1.0)
+        .overlay(
+            RoundedRectangle(cornerRadius: 0)
+                .stroke(isSoloed ? Color.red.opacity(0.85) : Color.white.opacity(0.1), lineWidth: isSoloed ? 1.5 : 1)
+        )
+        .animation(.easeInOut(duration: 0.15), value: isAnySoloed)
+    }
+    
+    private var muteButton: some View {
+        let bg: Color = isMuted ? .red : (isMutedHovered ? Color.white.opacity(0.08) : .clear)
+        let strokeColor: Color = isMuted ? .red : (isMutedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5))
+        let fg: Color = isMuted ? .black : .white
+        
+        return Button(action: {
+            if let onToggleMute = onToggleMute {
+                onToggleMute()
+            } else {
+                Haptics.playClick()
+                isMuted.toggle()
+                if isMuted { isSoloed = false }
+            }
+        }) {
+            Text("M")
+                .font(.custom("DotGothic16-Regular", size: 13))
+                .fontWeight(.bold)
+                .frame(width: 34, height: 30)
+                .background(bg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(strokeColor, lineWidth: 1)
+                )
+                .foregroundColor(fg)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isMutedHovered = $0 }
+    }
+    
+    private var soloButton: some View {
+        let bg: Color = isSoloed ? .red : (isSoloedHovered ? Color.white.opacity(0.08) : .clear)
+        let strokeColor: Color = isSoloed ? .red : (isSoloedHovered ? Color.red.opacity(0.6) : Color.gray.opacity(0.5))
+        let fg: Color = isSoloed ? .black : .white
+        
+        return Button(action: {
+            if let onToggleSolo = onToggleSolo {
+                onToggleSolo()
+            } else {
+                Haptics.playClick()
+                isSoloed.toggle()
+                if isSoloed { isMuted = false }
+            }
+        }) {
+            Text("S")
+                .font(.custom("DotGothic16-Regular", size: 13))
+                .fontWeight(.bold)
+                .frame(width: 34, height: 30)
+                .background(bg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(strokeColor, lineWidth: 1)
+                )
+                .foregroundColor(fg)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isSoloedHovered = $0 }
+    }
+}
+
+// MARK: - Rotary Pan Dial with Notched Center Detent
+struct PanKnobView: View {
+    @Binding var pan: Float // -1.0 to +1.0
+    @State private var isHovered = false
+    
+    private var panLabel: String {
+        if abs(pan) < 0.05 {
+            return "C"
+        } else if pan < 0 {
+            return "L\(Int(abs(pan) * 100))"
+        } else {
+            return "R\(Int(pan * 100))"
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            Button(action: {
+                let prev = pan
+                var next = max(-1.0, pan - 0.1)
+                if prev > 0 && next <= 0.05 {
+                    next = 0.0
+                    Haptics.playAlignment()
+                } else {
+                    Haptics.playClick()
+                }
+                pan = next
+            }) {
+                Text("‹")
+                    .font(.custom("DotGothic16-Regular", size: 11))
+                    .foregroundColor(.gray)
+                    .frame(width: 12, height: 16)
+            }
+            .buttonStyle(.plain)
+            
+            Text(panLabel)
+                .font(.custom("DotGothic16-Regular", size: 10.5))
+                .fontWeight(.bold)
+                .foregroundColor(abs(pan) < 0.05 ? .white : .red)
+                .frame(width: 34)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    Haptics.playAlignment()
+                    pan = 0.0
+                }
+            
+            Button(action: {
+                let prev = pan
+                var next = min(1.0, pan + 0.1)
+                if prev < 0 && next >= -0.05 {
+                    next = 0.0
+                    Haptics.playAlignment()
+                } else {
+                    Haptics.playClick()
+                }
+                pan = next
+            }) {
+                Text("›")
+                    .font(.custom("DotGothic16-Regular", size: 11))
+                    .foregroundColor(.gray)
+                    .frame(width: 12, height: 16)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.02))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(abs(pan) > 0.05 ? Color.red.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -702,9 +900,12 @@ struct DynamicIslandDotWaveformView: View {
 }
 
 
-// MARK: - Discrete LED Dot-Matrix Progress Bar
+// MARK: - Discrete LED Dot-Matrix Progress Bar with A-B Looping
 struct DotMatrixProgressBar: View {
     let progress: Double
+    let isLooping: Bool
+    let loopStart: Double
+    let loopEnd: Double
     let onSeek: (Double) -> Void
     let onSeekingChanged: (Bool) -> Void
     
@@ -716,14 +917,44 @@ struct DotMatrixProgressBar: View {
             let blockCount = max(1, Int(geo.size.width / totalUnitWidth))
             let activeCount = Int(round(Double(blockCount) * max(0, min(1, progress))))
             
-            HStack(spacing: blockSpacing) {
-                ForEach(0..<blockCount, id: \.self) { i in
-                    Rectangle()
-                        .fill(i < activeCount ? Color.red : Color.white.opacity(0.12))
-                        .frame(width: blockWidth, height: 6)
+            let loopStartIndex = isLooping ? Int(round(Double(blockCount) * loopStart)) : 0
+            let loopEndIndex = isLooping ? Int(round(Double(blockCount) * loopEnd)) : blockCount
+            
+            ZStack(alignment: .leading) {
+                HStack(spacing: blockSpacing) {
+                    ForEach(0..<blockCount, id: \.self) { i in
+                        let inLoop = isLooping && i >= loopStartIndex && i <= loopEndIndex
+                        let isPassed = i < activeCount
+                        
+                        let fill: Color = isPassed
+                            ? (inLoop ? Color.red : Color(red: 1.0, green: 0.35, blue: 0.35))
+                            : (inLoop ? Color.red.opacity(0.35) : Color.white.opacity(0.12))
+                        
+                        Rectangle()
+                            .fill(fill)
+                            .frame(width: blockWidth, height: inLoop ? 8 : 6)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                
+                // Visual A-B Loop Indicator Badges
+                if isLooping {
+                    HStack {
+                        Text("[A]")
+                            .font(.custom("DotGothic16-Regular", size: 9))
+                            .foregroundColor(.yellow)
+                            .offset(x: max(0, geo.size.width * loopStart - 6), y: -14)
+                        Spacer()
+                    }
+                    HStack {
+                        Text("[B]")
+                            .font(.custom("DotGothic16-Regular", size: 9))
+                            .foregroundColor(.yellow)
+                            .offset(x: min(geo.size.width - 18, geo.size.width * loopEnd - 6), y: -14)
+                        Spacer()
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -748,24 +979,46 @@ struct TransportBar: View {
     @State private var wasPlayingBeforeDrag = false
     @State private var isBypassHovered = false
     @State private var isExportHovered = false
+    @State private var isLoopHovered = false
+    @State private var isPitchHovered = false
+    @State private var isSpeedHovered = false
     
     var body: some View {
-        HStack(spacing: 16) {
-            timeLabel
-            progressBar
-            playButton
-            bypassButton
-            exportButton
+        GeometryReader { geo in
+            let w = geo.size.width
+            let isCompact = w < 800
+            let isMini = w < 620
+            
+            HStack(spacing: isCompact ? 8 : 12) {
+                timeLabel(isCompact: isCompact)
+                
+                progressBar
+                    .frame(minWidth: 50)
+                
+                // A-B Loop Quick Toggle
+                loopButton(isCompact: isCompact)
+                
+                if !isMini {
+                    pitchControl(isCompact: isCompact)
+                    speedControl(isCompact: isCompact)
+                }
+                
+                playButton
+                bypassButton(isCompact: isCompact)
+                exportButton(isCompact: isCompact)
+            }
+            .frame(width: w, height: 48)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
+        .frame(height: 48)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background(Color.black)
         .border(Color.white.opacity(0.1), width: 1)
     }
     
-    private var timeLabel: some View {
+    private func timeLabel(isCompact: Bool) -> some View {
         Text(engineManager.currentTimeString)
-            .font(.custom("DotGothic16-Regular", size: 16))
+            .font(.custom("DotGothic16-Regular", size: isCompact ? 13 : 15))
             .foregroundColor(.red)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
@@ -774,6 +1027,9 @@ struct TransportBar: View {
     private var progressBar: some View {
         DotMatrixProgressBar(
             progress: engineManager.playbackProgress,
+            isLooping: engineManager.isLooping,
+            loopStart: engineManager.loopStartProgress,
+            loopEnd: engineManager.loopEndProgress,
             onSeek: { percent in
                 engineManager.playbackProgress = percent
                 engineManager.updateTimeString(for: percent)
@@ -795,15 +1051,145 @@ struct TransportBar: View {
         )
     }
     
+    private func loopButton(isCompact: Bool) -> some View {
+        Button(action: {
+            engineManager.toggleLoop()
+        }) {
+            Text(engineManager.isLooping ? (isCompact ? "LOOP" : "LOOP: ON") : (isCompact ? "LOOP" : "LOOP: OFF"))
+                .font(.custom("DotGothic16-Regular", size: isCompact ? 10.5 : 11.5))
+                .fontWeight(.bold)
+                .frame(width: isCompact ? 64 : 80, height: 32)
+                .background(engineManager.isLooping ? Color.red : (isLoopHovered ? Color.white.opacity(0.08) : Color.clear))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(engineManager.isLooping ? Color.red : (isLoopHovered ? Color.white.opacity(0.7) : Color.gray.opacity(0.5)), lineWidth: 1)
+                )
+                .foregroundColor(engineManager.isLooping ? .black : (isLoopHovered ? .white : .gray))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isLoopHovered = $0 }
+    }
+    
+    private func pitchControl(isCompact: Bool) -> some View {
+        HStack(spacing: 2) {
+            Button(action: {
+                Haptics.playClick()
+                engineManager.pitchShiftSemitones = max(-12.0, engineManager.pitchShiftSemitones - 1.0)
+            }) {
+                Text("-")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(.gray)
+                    .frame(width: 14, height: 28)
+            }
+            .buttonStyle(.plain)
+            
+            let st = Int(engineManager.pitchShiftSemitones)
+            let absSt = abs(st)
+            let intervals = [
+                0: "ROOT", 1: "m2", 2: "M2", 3: "m3", 4: "M3", 5: "4th", 6: "TRI",
+                7: "5th", 8: "m6", 9: "M6", 10: "m7", 11: "M7", 12: "OCT"
+            ]
+            let intervalName = intervals[absSt] ?? "\(absSt)ST"
+            let sign = st > 0 ? "+" : ""
+            let displayText = isCompact ? (st == 0 ? "0 ST" : "\(sign)\(st) ST") : (st == 0 ? "0 ST [ROOT]" : "\(sign)\(st) ST [\(intervalName)]")
+            
+            Text(displayText)
+                .font(.custom("DotGothic16-Regular", size: isCompact ? 9.5 : 10))
+                .fontWeight(.bold)
+                .foregroundColor(st == 0 ? .gray : .red)
+                .frame(width: isCompact ? 54 : 78)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    Haptics.playClick()
+                    engineManager.pitchShiftSemitones = 0.0
+                }
+            
+            Button(action: {
+                Haptics.playClick()
+                engineManager.pitchShiftSemitones = min(12.0, engineManager.pitchShiftSemitones + 1.0)
+            }) {
+                Text("+")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(.gray)
+                    .frame(width: 14, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 3)
+        .frame(height: 32)
+        .background(isPitchHovered ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(engineManager.pitchShiftSemitones != 0 ? Color.red.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .onHover { isPitchHovered = $0 }
+    }
+    
+    private func speedControl(isCompact: Bool) -> some View {
+        HStack(spacing: 2) {
+            Button(action: {
+                Haptics.playClick()
+                let rates: [Double] = [0.5, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5]
+                if let idx = rates.lastIndex(where: { $0 < engineManager.playbackRate }) {
+                    engineManager.playbackRate = rates[idx]
+                } else {
+                    engineManager.playbackRate = 0.5
+                }
+            }) {
+                Text("‹")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(.gray)
+                    .frame(width: 12, height: 28)
+            }
+            .buttonStyle(.plain)
+            
+            Text(String(format: "%.2fx", engineManager.playbackRate))
+                .font(.custom("DotGothic16-Regular", size: isCompact ? 10 : 11))
+                .fontWeight(.bold)
+                .foregroundColor(engineManager.playbackRate == 1.0 ? .gray : .red)
+                .frame(width: isCompact ? 38 : 44)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    Haptics.playClick()
+                    engineManager.playbackRate = 1.0
+                }
+            
+            Button(action: {
+                Haptics.playClick()
+                let rates: [Double] = [0.5, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5]
+                if let idx = rates.firstIndex(where: { $0 > engineManager.playbackRate }) {
+                    engineManager.playbackRate = rates[idx]
+                } else {
+                    engineManager.playbackRate = 1.5
+                }
+            }) {
+                Text("›")
+                    .font(.custom("DotGothic16-Regular", size: 12))
+                    .foregroundColor(.gray)
+                    .frame(width: 12, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 3)
+        .frame(height: 32)
+        .background(isSpeedHovered ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(engineManager.playbackRate != 1.0 ? Color.red.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .onHover { isSpeedHovered = $0 }
+    }
+    
     private var playButton: some View {
         Button(action: {
             Haptics.playClick()
             engineManager.togglePlayback()
         }) {
             Image(systemName: engineManager.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 20))
+                .font(.system(size: 18))
                 .foregroundColor(.black)
-                .frame(width: 44, height: 44)
+                .frame(width: 38, height: 38)
                 .background(Color.red)
                 .clipShape(Circle())
                 .contentShape(Circle())
@@ -812,15 +1198,15 @@ struct TransportBar: View {
         .keyboardShortcut(.space, modifiers: [])
     }
     
-    private var bypassButton: some View {
+    private func bypassButton(isCompact: Bool) -> some View {
         Button(action: {
             Haptics.playClick()
             engineManager.isBypassed.toggle()
         }) {
-            Text(engineManager.isBypassed ? "BYPASS: ON" : "BYPASS: OFF")
-                .font(.custom("DotGothic16-Regular", size: 13))
+            Text(engineManager.isBypassed ? (isCompact ? "BYPASS" : "BYPASS: ON") : (isCompact ? "BYPASS" : "BYPASS: OFF"))
+                .font(.custom("DotGothic16-Regular", size: isCompact ? 11.5 : 13))
                 .fontWeight(.bold)
-                .frame(width: 110, height: 34)
+                .frame(width: isCompact ? 90 : 110, height: 34)
                 .background(
                     engineManager.isBypassed
                         ? Color.red
@@ -836,7 +1222,7 @@ struct TransportBar: View {
                         )
                 )
                 .foregroundColor(engineManager.isBypassed ? .black : .red)
-                .contentShape(Rectangle()) // Entire 110x34 area clickable!
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -844,7 +1230,7 @@ struct TransportBar: View {
         }
     }
     
-    private var exportButton: some View {
+    private func exportButton(isCompact: Bool) -> some View {
         Button(action: {
             Haptics.playClick()
             engineManager.exportStems()
@@ -852,7 +1238,7 @@ struct TransportBar: View {
             ZStack {
                 switch engineManager.exportState {
                 case .idle:
-                    Text("EXPORT STEMS")
+                    Text(isCompact ? "EXPORT" : "EXPORT STEMS")
                         .fontWeight(.bold)
                         .foregroundColor(.red)
                 case .exporting(let stage, let percent):
@@ -860,16 +1246,16 @@ struct TransportBar: View {
                         .fontWeight(.bold)
                         .foregroundColor(.yellow)
                 case .completed:
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Image(systemName: "checkmark")
-                        Text("COMPLETED")
+                        Text(isCompact ? "DONE" : "COMPLETED")
                     }
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                 }
             }
-            .font(.custom("DotGothic16-Regular", size: 13))
-            .frame(width: 140, height: 34)
+            .font(.custom("DotGothic16-Regular", size: isCompact ? 11.5 : 13))
+            .frame(width: isCompact ? 110 : 140, height: 34)
             .background(
                 engineManager.exportState == .completed
                     ? Color.red
@@ -886,7 +1272,7 @@ struct TransportBar: View {
                         lineWidth: 1
                     )
             )
-            .contentShape(Rectangle()) // Entire 140x34 area clickable!
+            .contentShape(Rectangle())
         }
         .disabled(engineManager.isExporting || engineManager.exportState == .completed)
         .buttonStyle(.plain)
@@ -975,6 +1361,447 @@ struct MarqueeText: View {
                 }
                 offset = 0
             }
+        }
+    }
+}
+
+// MARK: - Header Center Telemetry & Visualizer Console Module
+struct HeaderCenterTelemetryModule: View {
+    @Environment(AudioEngineManager.self) private var engineManager
+    let isMedium: Bool
+    let isWide: Bool
+    
+    @State private var activeModeIndex: Int = 0 // 0: FFT, 1: MACROS, 2: TELEMETRY, 3: BALANCE
+    private let modes = ["32-BAND FFT", "STEM MACROS", "TELEMETRY", "STEM BALANCE"]
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.65)
+            
+            // Outer hardware frame
+            Rectangle()
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            
+            // Red corner brackets (Nothing aesthetic)
+            CornerBrackets()
+            
+            VStack(spacing: 4) {
+                // Top Telemetry / Mode Switcher Bar
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Text("[")
+                            .font(.custom("DotGothic16-Regular", size: 10))
+                            .foregroundColor(.gray)
+                        Text("STUDIO HUD")
+                            .font(.custom("DotGothic16-Regular", size: 10))
+                            .foregroundColor(.red)
+                        Text("]")
+                            .font(.custom("DotGothic16-Regular", size: 10))
+                            .foregroundColor(.gray)
+                    }
+                    
+                    if isWide {
+                        HStack(spacing: 12) {
+                            Text("• \(engineManager.trackBPM)")
+                                .font(.custom("DotGothic16-Regular", size: 10))
+                                .foregroundColor(.white)
+                            Text("• \(engineManager.trackMusicalKey)")
+                                .font(.custom("DotGothic16-Regular", size: 10))
+                                .foregroundColor(.red)
+                            Text("• \(engineManager.trackSampleRate) • \(engineManager.trackBitDepth)")
+                                .font(.custom("DotGothic16-Regular", size: 9.5))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Mode Switcher Tabs
+                    HStack(spacing: 4) {
+                        ForEach(0..<modes.count, id: \.self) { idx in
+                            Button(action: {
+                                Haptics.playClick()
+                                withAnimation(nil) {
+                                    activeModeIndex = idx
+                                }
+                            }) {
+                                Text(modes[idx])
+                                    .font(.custom("DotGothic16-Regular", size: 8.5))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(activeModeIndex == idx ? Color.red : Color.white.opacity(0.04))
+                                    .foregroundColor(activeModeIndex == idx ? .black : (isWide && idx == 0 ? .white : .gray))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .stroke(activeModeIndex == idx ? Color.red : Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    // Neural Engine Activity LED
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(engineManager.isPlaying ? Color.red : Color.gray.opacity(0.6))
+                            .frame(width: 5, height: 5)
+                        Text("ANE")
+                            .font(.custom("DotGothic16-Regular", size: 9))
+                            .foregroundColor(engineManager.isPlaying ? .red : .gray)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                
+                // Content View
+                if isWide {
+                    // Wide 16-inch screen layout
+                    HStack(spacing: 14) {
+                        Spectrum32BandView()
+                            .frame(maxWidth: .infinity)
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                        
+                        if activeModeIndex == 0 || activeModeIndex == 1 {
+                            StemMacroPresetsView(compact: false)
+                                .frame(width: 320)
+                        } else if activeModeIndex == 2 {
+                            StudioTelemetryHUDView()
+                                .frame(width: 360)
+                        } else {
+                            StemBalanceHUDView()
+                                .frame(width: 320)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                } else {
+                    // Medium screen layout
+                    Group {
+                        switch activeModeIndex {
+                        case 0:
+                            Spectrum32BandView()
+                        case 1:
+                            StemMacroPresetsView(compact: true)
+                        case 2:
+                            StudioTelemetryHUDView()
+                        case 3:
+                            StemBalanceHUDView()
+                        default:
+                            Spectrum32BandView()
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                }
+            }
+        }
+        .frame(height: 100)
+    }
+}
+
+// MARK: - 32-Band Dot-Matrix FFT Spectrum Visualizer
+struct Spectrum32BandView: View {
+    @Environment(AudioEngineManager.self) private var engineManager
+    
+    var body: some View {
+        GeometryReader { geo in
+            let count = 32
+            let spacing: CGFloat = 2.5
+            let totalSpacing = CGFloat(count - 1) * spacing
+            let barW = max(2.5, min(14.0, (geo.size.width - totalSpacing) / CGFloat(count)))
+            let blockCount = 8
+            let blockH: CGFloat = 4.0
+            let blockSpacing: CGFloat = 1.6
+            
+            HStack(spacing: spacing) {
+                ForEach(0..<count, id: \.self) { i in
+                    let mag = i < engineManager.masterEQMagnitudes.count ? engineManager.masterEQMagnitudes[i] : 0.0
+                    let sensitivity = Float(AppSettings.shared.waveformSensitivity)
+                    let boost = 1.1 + Float(i) * 0.06
+                    let scaled = engineManager.isPlaying ? min(1.0, mag * sensitivity * boost) : 0.0
+                    let litBlocks = engineManager.isPlaying ? (scaled > 0.02 ? min(blockCount, Int(ceil(Double(scaled) * Double(blockCount)))) : 0) : 0
+                    
+                    VStack(spacing: blockSpacing) {
+                        ForEach((0..<blockCount).reversed(), id: \.self) { b in
+                            let isLit = b < litBlocks
+                            let isHigh = i >= 22
+                            let isMid = i >= 8 && i < 22
+                            
+                            let litColor: Color = isHigh
+                                ? Color(white: 0.95)
+                                : (isMid ? Color(red: 1.0, green: 0.32, blue: 0.32) : Color.red)
+                            
+                            RoundedRectangle(cornerRadius: 0.5)
+                                .fill(isLit ? litColor : Color.white.opacity(0.04))
+                                .frame(width: barW, height: blockH)
+                        }
+                    }
+                    .animation(.spring(response: 0.12, dampingFraction: 0.65, blendDuration: 0.02), value: litBlocks)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+    }
+}
+
+// MARK: - Stem Macro Presets View
+struct StemMacroPresetsView: View {
+    @Environment(AudioEngineManager.self) private var engineManager
+    let compact: Bool
+    
+    private var isAcapellaActive: Bool {
+        engineManager.vocalSolo && !engineManager.vocalMuted
+    }
+    
+    private var isInstrumentalActive: Bool {
+        engineManager.vocalMuted && !engineManager.drumMuted && !engineManager.bassMuted && !engineManager.otherMuted && !engineManager.vocalSolo
+    }
+    
+    private var isDrumlessActive: Bool {
+        engineManager.drumMuted && !engineManager.vocalMuted && !engineManager.bassMuted && !engineManager.otherMuted && !engineManager.drumSolo
+    }
+    
+    private var isKaraokeActive: Bool {
+        abs(engineManager.vocalVolume - 0.25) < 0.05 && !engineManager.vocalMuted && !engineManager.drumMuted
+    }
+    
+    private var isDnBActive: Bool {
+        engineManager.vocalMuted && !engineManager.drumMuted && !engineManager.bassMuted && engineManager.otherMuted
+    }
+    
+    var body: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: compact ? 4 : 6) {
+                macroButton(title: "ACAPELLA", isActive: isAcapellaActive) {
+                    engineManager.applyAcapella()
+                }
+                macroButton(title: "INSTRUMENTAL", isActive: isInstrumentalActive) {
+                    engineManager.applyInstrumental()
+                }
+                macroButton(title: "DRUMLESS", isActive: isDrumlessActive) {
+                    engineManager.applyDrumless()
+                }
+                macroButton(title: "KARAOKE", isActive: isKaraokeActive) {
+                    engineManager.applyKaraoke()
+                }
+                macroButton(title: "D&B", isActive: isDnBActive) {
+                    engineManager.applyDrumAndBass()
+                }
+                macroButton(title: "RESET", isActive: false) {
+                    engineManager.applyResetMix()
+                }
+            }
+            
+            HStack {
+                Text(activePresetDescription)
+                    .font(.custom("DotGothic16-Regular", size: 9))
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+                Spacer()
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+    }
+    
+    private var activePresetDescription: String {
+        if isAcapellaActive { return "ACTIVE: VOCAL ISOLATION (BACKING MUTED)" }
+        if isInstrumentalActive { return "ACTIVE: INSTRUMENTAL (VOCALS MUTED)" }
+        if isDrumlessActive { return "ACTIVE: DRUMLESS PRACTICE TRACK" }
+        if isKaraokeActive { return "ACTIVE: KARAOKE MODE (-12dB LEAD VOCALS)" }
+        if isDnBActive { return "ACTIVE: DRUM & BASS (VOCALS & OTHER MUTED)" }
+        return "ACTIVE: BALANCED 4-STEM MASTER (UNITY GAIN)"
+    }
+    
+    private func macroButton(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.custom("DotGothic16-Regular", size: compact ? 9.5 : 10.5))
+                .fontWeight(.bold)
+                .padding(.horizontal, compact ? 5 : 8)
+                .padding(.vertical, compact ? 4 : 5)
+                .background(isActive ? Color.red : Color.white.opacity(0.06))
+                .foregroundColor(isActive ? .black : .white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(isActive ? Color.red : Color.gray.opacity(0.5), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Studio Telemetry HUD View
+struct StudioTelemetryHUDView: View {
+    @Environment(AudioEngineManager.self) private var engineManager
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            telemetryBox(label: "TEMPO / KEY", value: "\(engineManager.trackBPM) • \(engineManager.trackMusicalKey)")
+            telemetryBox(label: "AUDIO FORMAT", value: "\(engineManager.trackBitDepth) • \(engineManager.trackSampleRate)")
+            telemetryBox(label: "TIMECODE", value: engineManager.detailedTimecode)
+            telemetryBox(label: "NEURAL ENGINE", value: "DEMUCS v4 • ANE ACTIVE")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+    
+    private func telemetryBox(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.custom("DotGothic16-Regular", size: 8.5))
+                .foregroundColor(.red.opacity(0.85))
+            Text(value)
+                .font(.custom("DotGothic16-Regular", size: 10))
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(5)
+        .background(Color.white.opacity(0.03))
+        .overlay(
+            Rectangle()
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Stem Balance HUD View
+struct StemBalanceHUDView: View {
+    @Environment(AudioEngineManager.self) private var engineManager
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            stemMeter(name: "VOC", vol: engineManager.vocalVolume, isMuted: engineManager.vocalMuted, isSolo: engineManager.vocalSolo, color: .white)
+            stemMeter(name: "DRM", vol: engineManager.drumVolume, isMuted: engineManager.drumMuted, isSolo: engineManager.drumSolo, color: .red)
+            stemMeter(name: "BAS", vol: engineManager.bassVolume, isMuted: engineManager.bassMuted, isSolo: engineManager.bassSolo, color: .red)
+            stemMeter(name: "OTH", vol: engineManager.otherVolume, isMuted: engineManager.otherMuted, isSolo: engineManager.otherSolo, color: .white)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+    
+    private func stemMeter(name: String, vol: Double, isMuted: Bool, isSolo: Bool, color: Color) -> some View {
+        VStack(spacing: 3) {
+            HStack {
+                Text(name)
+                    .font(.custom("DotGothic16-Regular", size: 9.5))
+                    .foregroundColor(color)
+                Spacer()
+                Text(isMuted ? "MUTE" : (isSolo ? "SOLO" : "\(Int(vol * 100))%"))
+                    .font(.custom("DotGothic16-Regular", size: 8.5))
+                    .foregroundColor(isMuted ? .red : .gray)
+            }
+            
+            GeometryReader { geo in
+                let w = geo.size.width
+                let fillW = isMuted ? 0.0 : w * max(0, min(1, vol))
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                    Rectangle()
+                        .fill(color)
+                        .frame(width: fillW)
+                }
+            }
+            .frame(height: 5)
+            .clipShape(RoundedRectangle(cornerRadius: 1))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(5)
+        .background(Color.white.opacity(0.03))
+        .overlay(Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1))
+    }
+}
+
+// MARK: - Nothing OS HUD Shortcut Cheat Sheet Modal
+struct ShortcutsHUDModal: View {
+    let onClose: () -> Void
+    @State private var isCloseHovered = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                    Text("ISOLATE // QUICK SHORTCUTS")
+                        .font(.custom("DotGothic16-Regular", size: 16))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    Haptics.playClick()
+                    onClose()
+                }) {
+                    Text("ESC / CLOSE")
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .foregroundColor(isCloseHovered ? .white : .gray)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(isCloseHovered ? Color.white.opacity(0.12) : Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+                .buttonStyle(.plain)
+                .onHover { isCloseHovered = $0 }
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.15))
+            
+            VStack(alignment: .leading, spacing: 8) {
+                hudRow(keys: ["1", "2", "3", "4"], action: "Exclusive Solo Vocals, Drums, Bass, Other")
+                hudRow(keys: ["V", "D", "B", "O"], action: "Toggle Mute for individual channels")
+                hudRow(keys: ["[", "]"], action: "Set A-B Loop Start and End points on the fly")
+                hudRow(keys: ["L"], action: "Toggle A-B Region Loop On / Off")
+                hudRow(keys: ["A", "I", "R"], action: "Acapella, Instrumental, Reset Unity Mix")
+                hudRow(keys: ["Space"], action: "Play / Pause playback")
+                hudRow(keys: ["B"], action: "Toggle Bypass (Original vs Separated Stems)")
+                hudRow(keys: ["E"], action: "Export 4-Stem Audio Archive")
+                hudRow(keys: ["⌘", "O"], action: "Import / Batch Import audio tracks")
+                hudRow(keys: ["?"], action: "Toggle this Shortcut Cheat Sheet")
+            }
+        }
+        .padding(22)
+        .frame(width: 500)
+        .background(Color.black)
+        .border(Color.white.opacity(0.2), width: 1)
+        .overlay(CornerBrackets())
+        .shadow(color: Color.black, radius: 30, x: 0, y: 10)
+    }
+    
+    private func hudRow(keys: [String], action: String) -> some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                ForEach(keys, id: \.self) { key in
+                    Text(key)
+                        .font(.custom("DotGothic16-Regular", size: 11))
+                        .fontWeight(.bold)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.red.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                        )
+                }
+            }
+            .frame(width: 110, alignment: .leading)
+            
+            Text(action)
+                .font(.custom("DotGothic16-Regular", size: 12))
+                .foregroundColor(.white.opacity(0.9))
+            
+            Spacer()
         }
     }
 }

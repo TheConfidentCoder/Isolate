@@ -1,0 +1,251 @@
+import AppKit
+import SwiftUI
+import UserNotifications
+
+@MainActor
+public final class MenuBarManager: NSObject, NSMenuDelegate {
+    public static let shared = MenuBarManager()
+    
+    private var statusItem: NSStatusItem?
+    private weak var engineManager: AudioEngineManager?
+    private var playlistProvider: (() -> [TrackModel])?
+    private var trackSelectHandler: ((TrackModel) -> Void)?
+    
+    private var isConfigured = false
+    private var animationTimer: Timer?
+    private var animationFrame = 0
+    
+    public override init() {
+        super.init()
+    }
+    
+    public func configure(
+        engineManager: AudioEngineManager,
+        playlistProvider: @escaping () -> [TrackModel],
+        trackSelectHandler: @escaping (TrackModel) -> Void
+    ) {
+        self.engineManager = engineManager
+        self.playlistProvider = playlistProvider
+        self.trackSelectHandler = trackSelectHandler
+        
+        if !isConfigured {
+            isConfigured = true
+            setupStatusItem()
+        }
+    }
+    
+    public func setEnabled(_ enabled: Bool) {
+        if enabled {
+            if statusItem == nil {
+                setupStatusItem()
+            }
+        } else {
+            if let item = statusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                statusItem = nil
+            }
+            animationTimer?.invalidate()
+            animationTimer = nil
+        }
+    }
+    
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            button.image = createMenuBarIcon(frame: 0, isPlaying: false)
+            button.imagePosition = .imageOnly
+            button.toolTip = "Isolate - 4-Stem Neural Audio"
+        }
+        
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
+        self.statusItem = item
+    }
+    
+    public func updatePlaybackState(isPlaying: Bool) {
+        animationTimer?.invalidate()
+        animationTimer = nil
+        
+        if isPlaying {
+            animationTimer = Timer.scheduledTimer(withTimeInterval: 0.14, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    self.animationFrame = (self.animationFrame + 1) % 6
+                    if let button = self.statusItem?.button {
+                        button.image = self.createMenuBarIcon(frame: self.animationFrame, isPlaying: true)
+                    }
+                }
+            }
+        } else {
+            animationFrame = 0
+            if let button = statusItem?.button {
+                button.image = createMenuBarIcon(frame: 0, isPlaying: false)
+            }
+        }
+    }
+    
+    private func createMenuBarIcon(frame: Int, isPlaying: Bool) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let img = NSImage(size: size, flipped: false) { rect in
+            guard NSGraphicsContext.current != nil else { return false }
+            
+            let color = isPlaying ? NSColor.systemRed : NSColor.labelColor
+            color.setFill()
+            
+            let barW: CGFloat = 2.5
+            let frames: [[CGFloat]] = [
+                [6.0, 10.0, 6.0],
+                [10.0, 15.0, 8.0],
+                [14.0, 8.0, 13.0],
+                [8.0, 14.0, 15.0],
+                [15.0, 10.0, 7.0],
+                [11.0, 15.0, 12.0]
+            ]
+            let heights: [CGFloat] = isPlaying ? frames[frame % frames.count] : [6.0, 10.0, 6.0]
+            let xs: [CGFloat] = [3.0, 7.5, 12.0]
+            let yCenter: CGFloat = 9.0
+            
+            for i in 0..<3 {
+                let h = heights[i]
+                let r = CGRect(x: xs[i], y: yCenter - h / 2.0, width: barW, height: h)
+                let path = NSBezierPath(roundedRect: r, xRadius: 1.0, yRadius: 1.0)
+                path.fill()
+            }
+            
+            return true
+        }
+        img.isTemplate = !isPlaying
+        return img
+    }
+    
+    public func sendBatchCompletionNotification(count: Int, lastTitle: String) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Stems Ready (\(count) Tracks)"
+            content.subtitle = lastTitle
+            content.body = "Neural Engine 4-stem separation complete. Ready to play & mix."
+            content.sound = .default
+            
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            center.add(request)
+        }
+    }
+    
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let engine = engineManager else { return }
+        
+        // 1. Current Track Header
+        let trackItem = NSMenuItem(
+            title: engine.currentTrackName.isEmpty ? "ISOLATE STEM PLAYER" : engine.currentTrackName,
+            action: #selector(bringWindowToFront),
+            keyEquivalent: ""
+        )
+        trackItem.target = self
+        menu.addItem(trackItem)
+        
+        if !engine.trackArtist.isEmpty && engine.trackArtist != "Isolate" {
+            let artistItem = NSMenuItem(
+                title: "\(engine.trackArtist) • \(engine.trackBPM) • \(engine.trackMusicalKey)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            artistItem.isEnabled = false
+            menu.addItem(artistItem)
+        }
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // 2. Play / Pause & Navigation
+        let playTitle = engine.isPlaying ? "Pause" : "Play"
+        let playItem = NSMenuItem(title: playTitle, action: #selector(togglePlayPause), keyEquivalent: " ")
+        playItem.target = self
+        menu.addItem(playItem)
+        
+        let nextItem = NSMenuItem(title: "Next Track", action: #selector(nextTrack), keyEquivalent: "]")
+        nextItem.keyEquivalentModifierMask = [.command]
+        nextItem.target = self
+        menu.addItem(nextItem)
+        
+        let prevItem = NSMenuItem(title: "Previous Track", action: #selector(previousTrack), keyEquivalent: "[")
+        prevItem.keyEquivalentModifierMask = [.command]
+        prevItem.target = self
+        menu.addItem(prevItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // 3. Stem Quick Actions
+        let acapellaItem = NSMenuItem(title: "Acapella (Solo Vocals)", action: #selector(applyAcapella), keyEquivalent: "")
+        acapellaItem.target = self
+        acapellaItem.state = (engine.vocalSolo && !engine.vocalMuted) ? .on : .off
+        menu.addItem(acapellaItem)
+        
+        let instrumentalItem = NSMenuItem(title: "Instrumental (Mute Vocals)", action: #selector(applyInstrumental), keyEquivalent: "")
+        instrumentalItem.target = self
+        instrumentalItem.state = (engine.vocalMuted && !engine.drumMuted) ? .on : .off
+        menu.addItem(instrumentalItem)
+        
+        let drumlessItem = NSMenuItem(title: "Drumless Backing", action: #selector(applyDrumless), keyEquivalent: "")
+        drumlessItem.target = self
+        drumlessItem.state = (engine.drumMuted && !engine.vocalMuted) ? .on : .off
+        menu.addItem(drumlessItem)
+        
+        let resetItem = NSMenuItem(title: "Reset 4-Stem Mix", action: #selector(applyResetMix), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // 4. App Window & Quit
+        let openItem = NSMenuItem(title: "Open Isolate", action: #selector(bringWindowToFront), keyEquivalent: "o")
+        openItem.keyEquivalentModifierMask = [.command]
+        openItem.target = self
+        menu.addItem(openItem)
+        
+        let quitItem = NSMenuItem(title: "Quit Isolate", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+    }
+    
+    @objc private func togglePlayPause() {
+        engineManager?.togglePlayback()
+    }
+    
+    @objc private func nextTrack() {
+        NowPlayingManager.shared.playNextTrack()
+    }
+    
+    @objc private func previousTrack() {
+        NowPlayingManager.shared.playPreviousTrack()
+    }
+    
+    @objc private func applyAcapella() {
+        engineManager?.applyAcapella()
+    }
+    
+    @objc private func applyInstrumental() {
+        engineManager?.applyInstrumental()
+    }
+    
+    @objc private func applyDrumless() {
+        engineManager?.applyDrumless()
+    }
+    
+    @objc private func applyResetMix() {
+        engineManager?.applyResetMix()
+    }
+    
+    @objc private func bringWindowToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+    
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
+    }
+}

@@ -47,17 +47,25 @@ struct IsolateApp: App {
                 }
             }
             .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                if let provider = providers.first {
-                    provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                var droppedURLs: [URL] = []
+                let dispatchGroup = DispatchGroup()
+                for provider in providers {
+                    dispatchGroup.enter()
+                    provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                        defer { dispatchGroup.leave() }
                         if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                            handleDroppedFile(url: url)
+                            droppedURLs.append(url)
                         } else if let url = item as? URL {
-                            handleDroppedFile(url: url)
+                            droppedURLs.append(url)
                         }
                     }
-                    return true
                 }
-                return false
+                dispatchGroup.notify(queue: .main) {
+                    if !droppedURLs.isEmpty {
+                        handleDroppedFiles(urls: droppedURLs)
+                    }
+                }
+                return true
             }
             .preferredColorScheme(.dark)
             .frame(minWidth: 960, minHeight: 600)
@@ -84,26 +92,44 @@ struct IsolateApp: App {
         .windowStyle(.hiddenTitleBar)
     }
     
-    private func handleDroppedFile(url: URL) {
+    private func handleDroppedFiles(urls: [URL]) {
+        let validAudioExtensions = ["mp3", "wav", "flac", "m4a", "aac", "aiff", "aif", "caf"]
+        let audioURLs = urls.filter { validAudioExtensions.contains($0.pathExtension.lowercased()) }
+        guard !audioURLs.isEmpty else { return }
+        
         Task {
-            let path = url.path
-            let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
-            if let existing = try? modelContext.fetch(descriptor).first {
-                await engineManager.loadTrack(existing)
-            } else {
-                if let data = await engineManager.loadAndSplitAudio(url: url) {
-                    await MainActor.run {
-                        let newTrack = TrackModel(
-                            id: data.id,
-                            title: data.title,
-                            originalURL: data.originalURL,
-                            vocalStemURL: data.vocalStemURL,
-                            bassStemURL: data.bassStemURL,
-                            drumStemURL: data.drumStemURL,
-                            otherStemURL: data.otherStemURL
-                        )
-                        modelContext.insert(newTrack)
+            var processedCount = 0
+            var lastTitle = ""
+            for url in audioURLs {
+                let path = url.path
+                let descriptor = FetchDescriptor<TrackModel>(predicate: #Predicate { $0.id == path })
+                if let existing = try? modelContext.fetch(descriptor).first {
+                    await engineManager.loadTrack(existing)
+                    processedCount += 1
+                    lastTitle = existing.title
+                } else {
+                    if let data = await engineManager.loadAndSplitAudio(url: url) {
+                        await MainActor.run {
+                            let newTrack = TrackModel(
+                                id: data.id,
+                                title: data.title,
+                                originalURL: data.originalURL,
+                                vocalStemURL: data.vocalStemURL,
+                                bassStemURL: data.bassStemURL,
+                                drumStemURL: data.drumStemURL,
+                                otherStemURL: data.otherStemURL
+                            )
+                            modelContext.insert(newTrack)
+                            try? modelContext.save()
+                        }
+                        processedCount += 1
+                        lastTitle = data.title
                     }
+                }
+            }
+            if processedCount > 0 {
+                await MainActor.run {
+                    MenuBarManager.shared.sendBatchCompletionNotification(count: processedCount, lastTitle: lastTitle)
                 }
             }
         }
@@ -343,6 +369,8 @@ struct ContentView: View {
                     }
                 )
                 .frame(width: 270)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
                 .transition(.identity) // 0ms Instant Nothing Hardware Snap
                 
                 Divider()
@@ -513,9 +541,33 @@ struct ContentView: View {
                     }
                 }
             )
+            MenuBarManager.shared.configure(
+                engineManager: engineManager,
+                playlistProvider: { tracks },
+                trackSelectHandler: { track in
+                    Task {
+                        await engineManager.loadTrack(track)
+                        if !engineManager.isPlaying {
+                            engineManager.togglePlayback()
+                        }
+                    }
+                }
+            )
         }
         .onChange(of: tracks) { _, newTracks in
             NowPlayingManager.shared.configure(
+                engineManager: engineManager,
+                playlistProvider: { newTracks },
+                trackSelectHandler: { track in
+                    Task {
+                        await engineManager.loadTrack(track)
+                        if !engineManager.isPlaying {
+                            engineManager.togglePlayback()
+                        }
+                    }
+                }
+            )
+            MenuBarManager.shared.configure(
                 engineManager: engineManager,
                 playlistProvider: { newTracks },
                 trackSelectHandler: { track in
@@ -966,6 +1018,7 @@ struct WindowAccessor: NSViewRepresentable {
                 window.styleMask.insert(.fullSizeContentView)
                 window.isOpaque = false
                 window.backgroundColor = .black
+                window.minSize = NSSize(width: 960, height: 580)
             }
         }
         return view
@@ -976,6 +1029,7 @@ struct WindowAccessor: NSViewRepresentable {
             window.title = ""
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
+            window.minSize = NSSize(width: 960, height: 580)
         }
     }
 }

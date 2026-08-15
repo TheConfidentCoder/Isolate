@@ -13,6 +13,24 @@ public final class AppSettings {
         }
     }
     
+    public var hardwareTheme: String {
+        didSet {
+            UserDefaults.standard.set(hardwareTheme, forKey: "hardwareTheme")
+            UserDefaults.standard.synchronize()
+            Haptics.playClick()
+        }
+    }
+    
+    public var isMenuBarMiniPlayerEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(!isMenuBarMiniPlayerEnabled, forKey: "isMenuBarDisabled")
+            UserDefaults.standard.synchronize()
+            if isMenuBarMiniPlayerEnabled {
+                Haptics.playClick()
+            }
+        }
+    }
+    
     public var isHapticsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(!isHapticsEnabled, forKey: "isHapticsDisabled")
@@ -39,6 +57,8 @@ public final class AppSettings {
     
     private init() {
         self.defaultExportFormat = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? "WAV"
+        self.hardwareTheme = UserDefaults.standard.string(forKey: "hardwareTheme") ?? "dark"
+        self.isMenuBarMiniPlayerEnabled = !UserDefaults.standard.bool(forKey: "isMenuBarDisabled")
         self.isHapticsEnabled = !UserDefaults.standard.bool(forKey: "isHapticsDisabled")
         self.isAutoPlayOnSelect = !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled")
         let savedSensitivity = UserDefaults.standard.double(forKey: "waveformSensitivity")
@@ -47,6 +67,8 @@ public final class AppSettings {
     
     public func reloadFromStorage() {
         self.defaultExportFormat = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? "WAV"
+        self.hardwareTheme = UserDefaults.standard.string(forKey: "hardwareTheme") ?? "dark"
+        self.isMenuBarMiniPlayerEnabled = !UserDefaults.standard.bool(forKey: "isMenuBarDisabled")
         self.isHapticsEnabled = !UserDefaults.standard.bool(forKey: "isHapticsDisabled")
         self.isAutoPlayOnSelect = !UserDefaults.standard.bool(forKey: "isAutoPlayDisabled")
         let savedSensitivity = UserDefaults.standard.double(forKey: "waveformSensitivity")
@@ -55,6 +77,8 @@ public final class AppSettings {
     
     public func resetToDefaults() {
         defaultExportFormat = "WAV"
+        hardwareTheme = "dark"
+        isMenuBarMiniPlayerEnabled = true
         isHapticsEnabled = true
         isAutoPlayOnSelect = true
         waveformSensitivity = 1.0
@@ -199,19 +223,40 @@ struct SettingsModalCard: View {
     
     // MARK: - Settings Tab Content
     private var settingsTabContent: some View {
-        VStack(spacing: 16) {
-            // Setting 1: Default Export Format
+        VStack(spacing: 14) {
+            // Setting 1: Hardware Finish (Nothing Dark vs Nothing Light)
             settingRow(
-                title: "DEFAULT EXPORT FORMAT",
-                subtitle: "Preferred audio format for multi-track stem export"
+                title: "HARDWARE FINISH",
+                subtitle: "Industrial design theme aesthetic"
             ) {
                 HStack(spacing: 6) {
-                    exportFormatButton("WAV", label: "WAV (24-BIT)")
-                    exportFormatButton("M4A", label: "M4A (320K)")
+                    themeButton("dark", label: "NOTHING DARK")
+                    themeButton("light", label: "NOTHING LIGHT")
                 }
             }
             
-            // Setting 2: Haptic Feedback
+            // Setting 2: Default Export Format
+            settingRow(
+                title: "EXPORT BUNDLE FORMAT",
+                subtitle: "Preferred audio container for isolated stem archives"
+            ) {
+                HStack(spacing: 5) {
+                    exportFormatButton("WAV", label: "WAV 24B")
+                    exportFormatButton("MP3", label: "MP3 320K")
+                    exportFormatButton("FLAC", label: "FLAC")
+                    exportFormatButton("ALL", label: "ALL ZIP")
+                }
+            }
+            
+            // Setting 3: Menu Bar Mini Player
+            settingRow(
+                title: "MENU BAR MINI CONTROLLER",
+                subtitle: "Discreet macOS status bar item with quick stem controls"
+            ) {
+                toggleSwitch(isOn: $settings.isMenuBarMiniPlayerEnabled)
+            }
+            
+            // Setting 4: Haptic Feedback
             settingRow(
                 title: "TACTILE HAPTICS",
                 subtitle: "Physical haptic feedback on clicks, faders, and buttons"
@@ -219,7 +264,7 @@ struct SettingsModalCard: View {
                 toggleSwitch(isOn: $settings.isHapticsEnabled)
             }
             
-            // Setting 3: Auto-Play on Select
+            // Setting 5: Auto-Play on Select
             settingRow(
                 title: "AUTO-PLAY ON SELECT",
                 subtitle: "Automatically start playback when clicking a track in Library"
@@ -227,15 +272,15 @@ struct SettingsModalCard: View {
                 toggleSwitch(isOn: $settings.isAutoPlayOnSelect)
             }
             
-            // Setting 4: Waveform Sensitivity
+            // Setting 6: Waveform Sensitivity
             settingRow(
                 title: "WAVEFORM SENSITIVITY",
                 subtitle: "Dynamic height multiplier for master & stem waveforms"
             ) {
                 HStack(spacing: 6) {
-                    sensitivityButton(0.7, label: "0.7x SUBTLE")
+                    sensitivityButton(0.7, label: "0.7x")
                     sensitivityButton(1.0, label: "1.0x STD")
-                    sensitivityButton(1.5, label: "1.5x PUNCH")
+                    sensitivityButton(1.5, label: "1.5x")
                 }
             }
         }
@@ -244,16 +289,19 @@ struct SettingsModalCard: View {
     
     // MARK: - Shortcuts Tab Content
     private var shortcutsTabContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            shortcutRow(keys: ["1", "2", "3", "4"], description: "Toggle Mute for Vocals, Drums, Bass, Other")
-            shortcutRow(keys: ["⇧ Shift", "+", "1 2 3 4"], description: "Toggle Solo for Vocals, Drums, Bass, Other")
+        VStack(alignment: .leading, spacing: 8) {
+            shortcutRow(keys: ["1", "2", "3", "4"], description: "Solo Vocals, Drums, Bass, Other (Exclusive)")
+            shortcutRow(keys: ["V", "D", "B", "O"], description: "Toggle Mute for individual channels")
+            shortcutRow(keys: ["A"], description: "Engage Acapella Preset (Solo Vocals)")
+            shortcutRow(keys: ["I"], description: "Engage Instrumental Preset (Mute Vocals)")
+            shortcutRow(keys: ["R"], description: "Reset 4-Stem Mix to 100% Unity Gain")
+            shortcutRow(keys: ["L"], description: "Toggle A-B Region Loop")
             shortcutRow(keys: ["Space"], description: "Play / Pause playback")
             shortcutRow(keys: ["B"], description: "Toggle Bypass (Original vs Separated Stems)")
-            shortcutRow(keys: ["E"], description: "Open Stem Export dialogue")
-            shortcutRow(keys: ["⌘", "O"], description: "Import new audio track")
-            shortcutRow(keys: ["⌘", ","], description: "Open System Preferences & Shortcuts")
-            shortcutRow(keys: ["Tab"], description: "Collapse / Expand Library Sidebar")
-            shortcutRow(keys: ["Double-Click"], description: "Reset stem slider to 100% Unity Gain")
+            shortcutRow(keys: ["E"], description: "Export 4-Stem Audio Archive")
+            shortcutRow(keys: ["⌘", "O"], description: "Import / Batch Import audio tracks")
+            shortcutRow(keys: ["Tab"], description: "Toggle Library Sidebar")
+            shortcutRow(keys: ["Double-Click"], description: "Reset fader or pan dial to Center")
         }
         .padding(.vertical, 4)
     }
@@ -284,6 +332,28 @@ struct SettingsModalCard: View {
         }) {
             Text(label)
                 .font(.custom("DotGothic16-Regular", size: 11))
+                .fontWeight(.bold)
+                .foregroundColor(isSelected ? .white : .gray)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isSelected ? Color.red : Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(isSelected ? Color.red : Color.white.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func themeButton(_ theme: String, label: String) -> some View {
+        let isSelected = settings.hardwareTheme == theme
+        return Button(action: {
+            Haptics.playClick()
+            settings.hardwareTheme = theme
+        }) {
+            Text(label)
+                .font(.custom("DotGothic16-Regular", size: 10.5))
                 .fontWeight(.bold)
                 .foregroundColor(isSelected ? .white : .gray)
                 .padding(.horizontal, 8)

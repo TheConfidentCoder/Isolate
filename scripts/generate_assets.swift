@@ -189,85 +189,87 @@ func createAppIcon() {
         
         let bounds = CGRect(x: 0, y: 0, width: s, height: s)
         
-        // Dark Rounded Squircle Bezel
-        let corner = s * 0.2237 // Apple standard macOS squircle proportion
-        let path = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
-        ctx.addPath(path)
-        ctx.setFillColor(CGColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1.0))
-        ctx.fillPath()
+        // 1. Modern macOS 26/27 Full-Bleed Dark Hardware Background
+        // Full rectangular bleed fills 100% of canvas so macOS clips the squircle naturally
+        ctx.setFillColor(CGColor(red: 0.055, green: 0.055, blue: 0.06, alpha: 1.0))
+        ctx.fill(bounds)
         
-        // Subtle Faint Dot Grid Texture
-        ctx.saveGState()
-        ctx.addPath(path)
-        ctx.clip()
+        // Very subtle radial depth gradient from center to edges
+        let colors = [
+            CGColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1.0),
+            CGColor(red: 0.04, green: 0.04, blue: 0.045, alpha: 1.0)
+        ] as CFArray
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.0, 1.0]) {
+            let center = CGPoint(x: s / 2.0, y: s / 2.0)
+            ctx.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center, endRadius: s * 0.7, options: [])
+        }
         
-        let dotStep = max(3.0, s * 0.05)
-        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.035))
-        for gx in stride(from: dotStep, through: s - dotStep, by: dotStep) {
-            for gy in stride(from: dotStep, through: s - dotStep, by: dotStep) {
-                let dotW = max(1.0, s * 0.012)
-                ctx.fill(CGRect(x: gx, y: gy, width: dotW, height: dotW))
+        // 2. Nothing Tech Micro Dot Matrix Texture (Full Bleed Grid)
+        let dotStep = max(3.0, s * 0.04)
+        let dotW = max(0.8, s * 0.009)
+        ctx.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.045))
+        for gx in stride(from: dotStep, through: s - dotStep / 2.0, by: dotStep) {
+            for gy in stride(from: dotStep, through: s - dotStep / 2.0, by: dotStep) {
+                ctx.fill(CGRect(x: gx - dotW / 2.0, y: gy - dotW / 2.0, width: dotW, height: dotW))
             }
         }
-        ctx.restoreGState()
         
-        // Subtle Inner Bezel Border
-        ctx.addPath(path)
-        ctx.setStrokeColor(CGColor(red: 0.22, green: 0.22, blue: 0.22, alpha: 1.0))
-        ctx.setLineWidth(max(1.0, s * 0.015))
-        ctx.strokePath()
-        
-        // Center Hardware Graphic: 4 Dot-Matrix Pixel Stems (Vocals, Drums, Bass, Other)
-        // Dot counts per stem: 5, 8, 10, 6 square pixels
+        // 3. Center Hardware Graphic: 4 Dot-Matrix Pixel Stems (Vocals, Drums, Bass, Other)
+        // Scaled up for bold readability in modern macOS Dock & App Switcher
         let stemPixelCounts = [5, 8, 10, 6]
         let maxDots = 10
         
-        let pixelSize = max(2.0, s * 0.075)
-        let pixelGap = max(1.0, s * 0.02)
-        let colSpacing = max(2.0, s * 0.05)
+        let pixelW = max(1.5, s * 0.088)
+        let pixelH = max(1.5, s * 0.072)
+        let pixelGap = max(0.8, s * 0.014)
+        let colSpacing = max(1.5, s * 0.052)
         
-        let totalW = CGFloat(4) * pixelSize + CGFloat(3) * colSpacing
+        let totalW = CGFloat(4) * pixelW + CGFloat(3) * colSpacing
         let startX = (s - totalW) / 2.0
         
-        let totalMaxH = CGFloat(maxDots) * pixelSize + CGFloat(maxDots - 1) * pixelGap
+        let totalMaxH = CGFloat(maxDots) * pixelH + CGFloat(maxDots - 1) * pixelGap
         let startY = (s - totalMaxH) / 2.0
         
         for (colIndex, count) in stemPixelCounts.enumerated() {
-            let colX = startX + CGFloat(colIndex) * (pixelSize + colSpacing)
-            let colH = CGFloat(count) * pixelSize + CGFloat(count - 1) * pixelGap
+            let colX = startX + CGFloat(colIndex) * (pixelW + colSpacing)
+            let colH = CGFloat(count) * pixelH + CGFloat(count - 1) * pixelGap
             let colStartY = startY + (totalMaxH - colH) / 2.0 // vertically centered
             
-            // Stem Colors: Bar 1 (White), Bar 2 (Red), Bar 3 (Red), Bar 4 (White)
-            let color: CGColor
-            if colIndex == 1 || colIndex == 2 {
-                color = CGColor(red: 1.0, green: 0.18, blue: 0.18, alpha: 1.0)
-            } else {
-                color = CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
-            }
+            // Stem Colors: Bar 1 (Pure White), Bar 2 (Nothing Red), Bar 3 (Nothing Red), Bar 4 (Pure White)
+            let isRed = (colIndex == 1 || colIndex == 2)
+            let color: CGColor = isRed
+                ? CGColor(red: 1.0, green: 0.16, blue: 0.16, alpha: 1.0)
+                : CGColor(red: 0.96, green: 0.96, blue: 0.96, alpha: 1.0)
+            
             ctx.setFillColor(color)
             
             for dotIndex in 0..<count {
-                let dotY = colStartY + CGFloat(dotIndex) * (pixelSize + pixelGap)
-                let dotRect = CGRect(x: colX, y: dotY, width: pixelSize, height: pixelSize)
-                let dotRadius = max(0.5, pixelSize * 0.18) // subtle rounded square pixel
+                let dotY = colStartY + CGFloat(dotIndex) * (pixelH + pixelGap)
+                let dotRect = CGRect(x: colX, y: dotY, width: pixelW, height: pixelH)
+                let dotRadius = max(0.5, min(pixelW, pixelH) * 0.22) // subtle rounded square/bar pixel
                 let dotPath = CGPath(roundedRect: dotRect, cornerWidth: dotRadius, cornerHeight: dotRadius, transform: nil)
                 ctx.addPath(dotPath)
                 ctx.fillPath()
             }
         }
         
-        // Red corner LED status indicator dot (Top-Right)
-        let dotSize = max(3.0, s * 0.07)
-        let dotX = s - corner - dotSize * 0.6
-        let dotY = s - corner - dotSize * 0.6
+        // 4. Red Corner LED Status Indicator Dot (Top-Right of Stems)
+        let dotSize = max(2.5, s * 0.068)
+        let col3X = startX + CGFloat(3) * (pixelW + colSpacing)
+        let col3TopY = startY + (totalMaxH - (CGFloat(6) * pixelH + CGFloat(5) * pixelGap)) / 2.0 + CGFloat(6) * pixelH + CGFloat(5) * pixelGap
+        let dotX = col3X + pixelW * 0.7
+        let dotY = col3TopY + pixelGap * 1.6
         
-        // Outer faint glow
-        ctx.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 0.25))
-        ctx.fillEllipse(in: CGRect(x: dotX - dotSize * 0.25, y: dotY - dotSize * 0.25, width: dotSize * 1.5, height: dotSize * 1.5))
-        
-        // Solid LED
-        ctx.setFillColor(CGColor(red: 1.0, green: 0.15, blue: 0.15, alpha: 1.0))
-        ctx.fillEllipse(in: CGRect(x: dotX, y: dotY, width: dotSize, height: dotSize))
+        if dotX + dotSize <= s * 0.92 && dotY + dotSize <= s * 0.92 {
+            // Outer faint glow
+            ctx.setFillColor(CGColor(red: 1.0, green: 0.16, blue: 0.16, alpha: 0.28))
+            ctx.fillEllipse(in: CGRect(x: dotX - dotSize * 0.35, y: dotY - dotSize * 0.35, width: dotSize * 1.7, height: dotSize * 1.7))
+            
+            // Solid LED
+            ctx.setFillColor(CGColor(red: 1.0, green: 0.16, blue: 0.16, alpha: 1.0))
+            ctx.fillEllipse(in: CGRect(x: dotX, y: dotY, width: dotSize, height: dotSize))
+        }
         
         img.unlockFocus()
         
@@ -289,7 +291,7 @@ func createAppIcon() {
     // Copy to Sources/Resources/AppIcon.icns
     try? FileManager.default.removeItem(atPath: "Sources/Resources/AppIcon.icns")
     try? FileManager.default.copyItem(atPath: "Assets/AppIcon.icns", toPath: "Sources/Resources/AppIcon.icns")
-    print("Generated complete Nothing dot-matrix AppIcon.icns")
+    print("Generated complete Nothing dot-matrix AppIcon.icns (Full-Bleed macOS 26/27 Edition)")
 }
 
 createDMGBackground()
