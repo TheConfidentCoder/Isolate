@@ -87,7 +87,7 @@ public struct PlayerView: View {
                     .frame(minWidth: 160, maxWidth: isCompact ? .infinity : 280, alignment: .leading)
                 
                 if !isCompact {
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 12)
                     
                     HeaderCenterTelemetryModule(
                         isMedium: isMedium,
@@ -95,14 +95,6 @@ public struct PlayerView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                
-                Spacer(minLength: 8)
-                
-                DynamicIslandDotWaveformView(
-                    magnitudes: engineManager.masterEQMagnitudes,
-                    amplitudes: engineManager.masterWaveformAmplitudes,
-                    isPlaying: engineManager.isPlaying
-                )
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
@@ -1507,13 +1499,13 @@ struct HeaderCenterTelemetryModule: View {
                             
                             if activeModeIndex == 1 {
                                 StemMacroPresetsView(compact: false)
-                                    .frame(width: 320)
+                                    .frame(maxWidth: 480)
                             } else if activeModeIndex == 2 {
                                 StudioTelemetryHUDView()
-                                    .frame(width: 360)
+                                    .frame(maxWidth: 480)
                             } else {
                                 StemBalanceHUDView()
-                                    .frame(width: 320)
+                                    .frame(maxWidth: 480)
                             }
                         }
                         .padding(.horizontal, 10)
@@ -1548,46 +1540,80 @@ struct HeaderCenterTelemetryModule: View {
 struct Spectrum32BandView: View {
     @Environment(AudioEngineManager.self) private var engineManager
     
+    // 32 Frequency Bins across standard 20Hz - 20kHz
+    private var magnitudes: [Float] {
+        engineManager.masterEQMagnitudes
+    }
+    
     var body: some View {
         GeometryReader { geo in
-            let count = 32
-            let spacing: CGFloat = max(1.5, min(3.5, geo.size.width * 0.003))
-            let totalSpacing = CGFloat(count - 1) * spacing
-            let barW = max(2.0, (geo.size.width - totalSpacing) / CGFloat(count))
-            let blockCount = 10
-            let blockSpacing: CGFloat = 1.8
-            let blockH = max(2.5, (geo.size.height - CGFloat(blockCount - 1) * blockSpacing) / CGFloat(blockCount))
+            let totalWidth = geo.size.width
+            let totalHeight = geo.size.height
+            let barCount = 32
+            let spacing: CGFloat = 2.5
+            let totalSpacing = spacing * CGFloat(barCount - 1)
+            let barWidth = max(2.0, (totalWidth - totalSpacing) / CGFloat(barCount))
             
-            HStack(spacing: spacing) {
-                ForEach(0..<count, id: \.self) { i in
-                    let mag = i < engineManager.masterEQMagnitudes.count ? engineManager.masterEQMagnitudes[i] : 0.0
-                    let scaled = engineManager.isPlaying ? mag : 0.0
-                    let continuousHeight = Double(scaled) * Double(blockCount)
-                    
-                    VStack(spacing: blockSpacing) {
-                        ForEach((0..<blockCount).reversed(), id: \.self) { b in
-                            let blockIndex = Double(b)
-                            let isFullyLit = blockIndex + 1.0 <= continuousHeight
-                            let isPartiallyLit = !isFullyLit && blockIndex < continuousHeight
-                            let fraction = isPartiallyLit ? max(0.25, continuousHeight - blockIndex) : (isFullyLit ? 1.0 : 0.0)
-                            
-                            let isHigh = i >= 22
-                            let isMid = i >= 8 && i < 22
-                            
-                            let baseColor: Color = isHigh
-                                ? Color(white: 0.96)
-                                : (isMid ? Color(red: 1.0, green: 0.36, blue: 0.36) : Color.red)
-                            
-                            RoundedRectangle(cornerRadius: 1.0)
-                                .fill(fraction > 0 ? baseColor.opacity(fraction) : Color.white.opacity(0.04))
-                                .frame(width: barW, height: blockH)
-                        }
-                    }
-                    .animation(.spring(response: 0.08, dampingFraction: 0.7, blendDuration: 0.01), value: continuousHeight)
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    let mag = index < magnitudes.count ? CGFloat(magnitudes[index]) : 0.0
+                    FFT32BarColumn(magnitude: mag, height: totalHeight, width: barWidth, barIndex: index)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+    }
+}
+
+struct FFT32BarColumn: View {
+    let magnitude: CGFloat
+    let height: CGFloat
+    let width: CGFloat
+    let barIndex: Int
+    
+    // 16 Discrete Vertical LED segments per frequency band
+    private let blockCount = 16
+    private let blockSpacing: CGFloat = 1.5
+    
+    var body: some View {
+        let totalSpacing = blockSpacing * CGFloat(blockCount - 1)
+        let blockHeight = max(1.5, (height - totalSpacing) / CGFloat(blockCount))
+        let activeBlocksFloat = max(0.0, min(CGFloat(blockCount), magnitude * CGFloat(blockCount)))
+        
+        VStack(spacing: blockSpacing) {
+            ForEach((0..<blockCount).reversed(), id: \.self) { blockIdx in
+                let blockBottomLevel = CGFloat(blockIdx)
+                let blockTopLevel = CGFloat(blockIdx + 1)
+                
+                let fillFraction: CGFloat = {
+                    if activeBlocksFloat >= blockTopLevel {
+                        return 1.0
+                    } else if activeBlocksFloat <= blockBottomLevel {
+                        return 0.0
+                    } else {
+                        return activeBlocksFloat - blockBottomLevel
+                    }
+                }()
+                
+                let isTopTwoBlocks = blockIdx >= (blockCount - 2)
+                let isUpperMidBlock = blockIdx >= (blockCount - 5)
+                
+                let activeColor: Color = {
+                    if isTopTwoBlocks {
+                        return Color.red // Nothing hardware red peak warning
+                    } else if isUpperMidBlock {
+                        return Color.white
+                    } else {
+                        return Color.white.opacity(0.92)
+                    }
+                }()
+                
+                RoundedRectangle(cornerRadius: 0.5)
+                    .fill(activeColor.opacity(fillFraction > 0 ? max(0.2, fillFraction) : 0.05))
+                    .frame(width: width, height: blockHeight)
+            }
+        }
+        .frame(width: width, height: height, alignment: .bottom)
     }
 }
 
@@ -1668,8 +1694,10 @@ struct StemMacroPresetsView: View {
             }
         }) {
             Text(title)
-                .font(.custom("DotGothic16-Regular", size: compact ? 9.5 : 10.5))
+                .font(.custom("DotGothic16-Regular", size: compact ? 9.0 : 10.0))
                 .fontWeight(.bold)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, compact ? 5 : 8)
                 .padding(.vertical, compact ? 4 : 5)
                 .background(isActive ? Color.red : Color.white.opacity(0.06))
