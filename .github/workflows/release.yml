@@ -28,26 +28,18 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
-      - name: Build macOS Release Binary
+      - name: Package Release DMG & ZIP
         run: |
-          xcodebuild -scheme Isolate -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO -derivedDataPath DerivedData
-          mkdir -p build/Release
-          cp -R DerivedData/Build/Products/Release/Isolate.app build/Release/Isolate.app
-          codesign --force --deep --sign - build/Release/Isolate.app
-
-      - name: Create DMG Disk Image
-        run: |
-          mkdir -p dmg_root/.background
-          cp -R build/Release/Isolate.app dmg_root/
-          ln -s /Applications dmg_root/Applications
-          cp Assets/dmg_background.png dmg_root/.background/
-          hdiutil create -volname "Isolate" -srcfolder dmg_root -ov -format UDZO Isolate.dmg
-          rm -rf dmg_root
+          bash scripts/package_release.sh ${{ github.ref_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Isolate.dmg
+          files: |
+            dist/Isolate.dmg
+            dist/Isolate-${{ github.ref_name }}.dmg
+            dist/Isolate-${{ github.ref_name }}-macOS.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
           prerelease: false
